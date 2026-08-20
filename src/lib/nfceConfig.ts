@@ -1,0 +1,146 @@
+// Gerenciador e Modelo de Configurações da NFC-e (SEFAZ Modelo 65 - Varejo / PDV)
+
+export type TipoImpressaoDanfeNfce = 'BOBINA_80MM' | 'BOBINA_58MM' | 'A4_COMPACTO';
+export type FormaEmissaoNfce = 'NORMAL' | 'CONTINGÊNCIA OFFLINE NFC-E';
+export type AmbienteSefazNfce = 'PRODUÇÃO' | 'HOMOLOGAÇÃO';
+export type ModoOperacaoFiscalNfce = 'TECNOSPEED' | 'ACBR' | 'NUVEM_FISCAL' | 'TREINAMENTO' | 'WEBSERVICE';
+
+export interface NfceConfiguracaoCompleta {
+  // --- MODO DE OPERAÇÃO FISCAL ---
+  modoOperacao: ModoOperacaoFiscalNfce; // 'TECNOSPEED' (Componente Desktop :8081 / TX2), 'ACBR', 'TREINAMENTO' ou 'WEBSERVICE'
+  
+  // --- TECNOSPEED COMPONENTE DESKTOP (COM / OCX & MANAGER) ---
+  tecnoSpeedCnpjSoftwareHouse: string; // Ex: '03.661.869/0001-75' (Silenus Software)
+  tecnoSpeedTokenSoftwareHouse: string; // Ex: '6f46553fc8fcf2e4263df17c11acafc0'
+  tecnoSpeedDiretorioBase: string; // Padrão: 'C:\\ERPFULL\\NFE'
+  tecnoSpeedHost: string;
+  tecnoSpeedPorta: number;
+  tecnoSpeedGrupo: string;
+  tecnoSpeedUsuario: string;
+  tecnoSpeedSenha: string;
+  tecnoSpeedPastaEntrada: string;
+  tecnoSpeedPastaRetorno: string;
+
+  // --- NUVEM FISCAL API ---
+  nuvemFiscalClientId: string;
+  nuvemFiscalClientSecret: string;
+  nuvemFiscalAmbiente: 'SANDBOX' | 'PRODUÇÃO';
+
+  // --- ACBR MONITOR ---
+  hostAcbr: string;
+  portaAcbr: number;
+
+  // --- 1. DADOS PRINCIPAL & TOKENS SEFAZ (CSC) ---
+  cnpjEmitente: string;
+  nomeEmitente: string;
+  certificadoDigital: string;
+  caminhoArquivoPfx: string;
+  senhaCertificadoA1: string;
+  idCsc: string; // Ex: '000001'
+  codigoCsc: string; // Token CSC alfanumérico fornecido pela SEFAZ
+  tipoImpressaoDanfe: TipoImpressaoDanfeNfce;
+  cortarPapelAutomatico: boolean;
+  formaEmissao: FormaEmissaoNfce;
+  caminhoLogotipo: string;
+  pastaArmazenamentoNfce: string;
+  ufWebService: string;
+  versaoWebService: string;
+  ambienteDestino: AmbienteSefazNfce;
+  usarModoSincrono: boolean;
+
+  // --- 2. OUTROS DADOS & CUPOM FISCAL ---
+  versaoEsquema: string; // Ex: 'pl_010b'
+  versaoManual: string;  // Ex: 'vm60'
+  fusoHorario: string;   // Ex: '-04:00'
+  validarEsquema: boolean;
+  enviarCodigoBarra: boolean;
+  fazerUploadSieg: boolean;
+  mensagemPromocionalRodape: string;
+  pastaArmazenamentoXmlCancelados: string;
+  pastaArmazenamentoXmlEntrada: string;
+
+  // --- 3. RESPONSÁVEL TÉCNICO (SEFAZ NT 2018.005) ---
+  cnpjResponsavelTecnico: string;
+  contatoResponsavelTecnico: string;
+  foneResponsavelTecnico: string;
+  emailResponsavelTecnico: string;
+  idCsrt: string;
+  hashCsrt: string;
+}
+
+export const CONFIG_NFCE_PADRAO: NfceConfiguracaoCompleta = {
+  modoOperacao: 'TECNOSPEED',
+  tecnoSpeedCnpjSoftwareHouse: '03.661.869/0001-75',
+  tecnoSpeedTokenSoftwareHouse: '6f46553fc8fcf2e4263df17c11acafc0',
+  tecnoSpeedDiretorioBase: 'C:\\ERPFULL\\NFE',
+  tecnoSpeedHost: '127.0.0.1',
+  tecnoSpeedPorta: 8081,
+  tecnoSpeedGrupo: 'DEFAULT',
+  tecnoSpeedUsuario: '',
+  tecnoSpeedSenha: '',
+  tecnoSpeedPastaEntrada: 'C:\\TecnoSpeed\\NFe\\Entrada\\',
+  tecnoSpeedPastaRetorno: 'C:\\TecnoSpeed\\NFe\\Retorno\\',
+  nuvemFiscalClientId: '',
+  nuvemFiscalClientSecret: '',
+  nuvemFiscalAmbiente: 'SANDBOX',
+  hostAcbr: '127.0.0.1',
+  portaAcbr: 3434,
+  cnpjEmitente: '05.766.577/0001-22',
+  nomeEmitente: 'PIVETA DIST. DE TINTAS AUTOMOTIVA LTDA',
+  certificadoDigital: 'PIVETA DIST. DE TINTAS AUTOMOTIVA LTDA (A1 - Validade: 12/2026)',
+  caminhoArquivoPfx: 'C:\\ERPFULL\\NFE\\Certificado.pfx',
+  senhaCertificadoA1: '',
+  idCsc: '000001',
+  codigoCsc: '1A2B3C4D5E6F7G8H9I0J1K2L3M4N5O6P',
+  tipoImpressaoDanfe: 'BOBINA_80MM',
+  cortarPapelAutomatico: true,
+  formaEmissao: 'NORMAL',
+  caminhoLogotipo: 'C:\\ERPFULL\\NFCE\\logo_cupom.jpg',
+  pastaArmazenamentoNfce: 'C:\\ERPFULL\\NFE\\XmlDestinatario\\',
+  ufWebService: 'MATO GROSSO DO SUL',
+  versaoWebService: '4.0',
+  ambienteDestino: 'HOMOLOGAÇÃO',
+  usarModoSincrono: true,
+
+  versaoEsquema: 'pl_010b',
+  versaoManual: 'vm60',
+  fusoHorario: '-04:00',
+  validarEsquema: true,
+  enviarCodigoBarra: false,
+  fazerUploadSieg: true,
+  mensagemPromocionalRodape: 'OBRIGADO PELA PREFERENCIA! VOLTE SEMPRE.',
+  pastaArmazenamentoXmlCancelados: 'C:\\ERPFULL\\NFCE\\Cancelados',
+  pastaArmazenamentoXmlEntrada: 'C:\\ERPFULL\\NFE\\Entrada\\',
+
+  cnpjResponsavelTecnico: '12.345.678/0001-90',
+  contatoResponsavelTecnico: 'COLISEU SISTEMAS - DEPARTAMENTO DE ENGENHARIA FISCAL',
+  foneResponsavelTecnico: '(67) 3421-9000',
+  emailResponsavelTecnico: 'fiscal@coliseusistemas.com.br',
+  idCsrt: '00001',
+  hashCsrt: 'A9B8C7D6E5F4G3H2I1J0K9L8M7N6O5P4',
+};
+
+const STORAGE_KEY_NFCE_CONFIG = 'coliseu_nfce_configuracao_completa';
+
+export function getNfceConfig(): NfceConfiguracaoCompleta {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_NFCE_CONFIG);
+    if (!raw) return CONFIG_NFCE_PADRAO;
+    const parsed = JSON.parse(raw);
+    const merged = { ...CONFIG_NFCE_PADRAO, ...parsed };
+    if (!merged.modoOperacao || merged.modoOperacao === 'TREINAMENTO') {
+      merged.modoOperacao = 'TECNOSPEED';
+    }
+    if (!merged.pastaArmazenamentoNfce || merged.pastaArmazenamentoNfce === 'C:\\ERPFULL\\NFCE\\' || merged.pastaArmazenamentoNfce === 'C:\\ERPFULL\\NFE\\') {
+      merged.pastaArmazenamentoNfce = 'C:\\ERPFULL\\NFE\\XmlDestinatario\\';
+    }
+    return merged;
+  } catch {
+    return CONFIG_NFCE_PADRAO;
+  }
+}
+
+export function salvarNfceConfig(config: NfceConfiguracaoCompleta): void {
+  localStorage.setItem(STORAGE_KEY_NFCE_CONFIG, JSON.stringify(config));
+  window.dispatchEvent(new Event('coliseu_nfce_config_updated'));
+}

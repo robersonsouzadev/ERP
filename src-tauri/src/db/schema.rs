@@ -1,0 +1,1669 @@
+use rusqlite::{Connection, Result};
+use tracing::info;
+
+/// Array of all 60 tables managed by the ERP system for sync validation.
+pub const ALL_TABLES: [&str; 60] = [
+    "empresas",
+    "filiais",
+    "produtos",
+    "depositos",
+    "estoque_saldos",
+    "estoque_movimentacoes",
+    "pessoas",
+    "vendas",
+    "vendas_itens",
+    "vendas_pagamentos",
+    "documentos_fiscais",
+    "documentos_fiscais_eventos",
+    "financeiro_lancamentos",
+    "caixa_movimentacoes",
+    "dispositivos",
+    "tributacao_regras",
+    "nfe_entradas",
+    "nfe_entradas_itens",
+    "compras_pedidos",
+    "compras_pedidos_itens",
+    "estoque_transferencias",
+    "estoque_transferencias_itens",
+    "plano_contas",
+    "centro_custos",
+    "ofx_extratos",
+    "boletos_emitidos",
+    "usuarios",
+    "usuarios_permissoes",
+    "alcadas_desconto",
+    "audit_logs",
+    "relatorios_config",
+    "curva_abc_historico",
+    "produtos_variantes",
+    "produtos_grades",
+    "produtos_grades_eixos",
+    "xml_entrada_pendentes",
+    "xml_entrada_itens_grade",
+    "etiquetas_modelos",
+    "etiquetas_filas",
+    "promocoes",
+    "promocoes_itens",
+    "pix_chaves",
+    "pix_transacoes",
+    "comandas",
+    "comandas_itens",
+    "condicionais",
+    "condicionais_itens",
+    "vale_trocas",
+    "ficha_financeira_cliente",
+    "pessoas_enderecos",
+    "pessoas_contatos",
+    "pessoas_referencias",
+    "pessoas_veiculos",
+    "configuracoes_sistema",
+    "filiais_nfe_config",
+    "filiais_nfce_config",
+    "filiais_nfse_config",
+    "nfse_documentos",
+    "llm_providers",
+    "whatsapp_config",
+];
+
+/// Sync metadata columns required on EVERY table for local-first sync support.
+pub const SYNC_METADATA_COLUMNS: [&str; 7] = [
+    "id",
+    "device_id",
+    "created_at",
+    "updated_at",
+    "x_sync_status",
+    "x_version",
+    "is_deleted",
+];
+
+/// Initializes the database schema with DDL for all 15 tables and sync indexes.
+pub fn create_tables(conn: &Connection) -> Result<()> {
+    info!("Executando DDL de criação de tabelas do ERP...");
+
+    conn.execute_batch(
+        "
+        PRAGMA foreign_keys = ON;
+
+        -- 1. EMPRESAS
+        CREATE TABLE IF NOT EXISTS empresas (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            razao_social TEXT NOT NULL,
+            nome_fantasia TEXT,
+            cnpj TEXT UNIQUE NOT NULL,
+            inscricao_estadual TEXT,
+            ativo INTEGER NOT NULL DEFAULT 1
+        );
+        CREATE INDEX IF NOT EXISTS idx_empresas_sync ON empresas(x_sync_status, updated_at);
+
+        -- 2. FILIAIS
+        CREATE TABLE IF NOT EXISTS filiais (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            empresa_id TEXT NOT NULL REFERENCES empresas(id),
+            codigo TEXT NOT NULL,
+            nome TEXT NOT NULL,
+            cnpj TEXT NOT NULL,
+            inscricao_estadual TEXT,
+            endereco TEXT,
+            cidade TEXT,
+            uf TEXT,
+            ativo INTEGER NOT NULL DEFAULT 1
+        );
+        CREATE INDEX IF NOT EXISTS idx_filiais_sync ON filiais(x_sync_status, updated_at);
+        CREATE INDEX IF NOT EXISTS idx_filiais_empresa ON filiais(empresa_id);
+
+        -- 3. PRODUTOS
+        CREATE TABLE IF NOT EXISTS produtos (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            empresa_id TEXT NOT NULL REFERENCES empresas(id),
+            codigo_sku TEXT NOT NULL,
+            codigo_barras TEXT,
+            descricao TEXT NOT NULL,
+            unidade_medida TEXT NOT NULL DEFAULT 'UN',
+            preco_custo REAL NOT NULL DEFAULT 0.0,
+            preco_venda REAL NOT NULL DEFAULT 0.0,
+            ncm TEXT,
+            cest TEXT,
+            tipo_produto TEXT DEFAULT 'SIMPLES',
+            unidade_compra TEXT DEFAULT 'UN',
+            fator_conversao REAL DEFAULT 1.0,
+            markup_sugerido REAL DEFAULT 50.0,
+            cfop_venda TEXT DEFAULT '5101',
+            csosn_venda TEXT DEFAULT '102',
+            pis_cst_venda TEXT DEFAULT '49',
+            cofins_cst_venda TEXT DEFAULT '49',
+            aliquota_ibpt_nacional REAL DEFAULT 0.0,
+            aliquota_ibpt_estadual REAL DEFAULT 0.0,
+            grade_id TEXT,
+            ativo INTEGER NOT NULL DEFAULT 1
+        );
+        CREATE INDEX IF NOT EXISTS idx_produtos_sync ON produtos(x_sync_status, updated_at);
+        CREATE INDEX IF NOT EXISTS idx_produtos_empresa ON produtos(empresa_id);
+        CREATE INDEX IF NOT EXISTS idx_produtos_sku ON produtos(codigo_sku);
+        CREATE INDEX IF NOT EXISTS idx_produtos_barras ON produtos(codigo_barras);
+
+        -- 4. DEPOSITOS
+        CREATE TABLE IF NOT EXISTS depositos (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            filial_id TEXT NOT NULL REFERENCES filiais(id),
+            codigo TEXT NOT NULL,
+            nome TEXT NOT NULL,
+            padrao INTEGER NOT NULL DEFAULT 0,
+            ativo INTEGER NOT NULL DEFAULT 1
+        );
+        CREATE INDEX IF NOT EXISTS idx_depositos_sync ON depositos(x_sync_status, updated_at);
+        CREATE INDEX IF NOT EXISTS idx_depositos_filial ON depositos(filial_id);
+
+        -- 5. ESTOQUE_SALDOS
+        CREATE TABLE IF NOT EXISTS estoque_saldos (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            deposito_id TEXT NOT NULL REFERENCES depositos(id),
+            produto_id TEXT NOT NULL REFERENCES produtos(id),
+            quantidade_atual REAL NOT NULL DEFAULT 0.0,
+            quantidade_reservada REAL NOT NULL DEFAULT 0.0,
+            UNIQUE(deposito_id, produto_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_estoque_saldos_sync ON estoque_saldos(x_sync_status, updated_at);
+        CREATE INDEX IF NOT EXISTS idx_estoque_saldos_produto ON estoque_saldos(produto_id);
+
+        -- 6. ESTOQUE_MOVIMENTACOES
+        CREATE TABLE IF NOT EXISTS estoque_movimentacoes (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            deposito_id TEXT NOT NULL REFERENCES depositos(id),
+            produto_id TEXT NOT NULL REFERENCES produtos(id),
+            tipo TEXT NOT NULL,
+            quantidade REAL NOT NULL,
+            saldo_anterior REAL NOT NULL,
+            saldo_posterior REAL NOT NULL,
+            origem_documento TEXT,
+            origem_id TEXT,
+            observacao TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_estoque_mov_sync ON estoque_movimentacoes(x_sync_status, updated_at);
+        CREATE INDEX IF NOT EXISTS idx_estoque_mov_produto ON estoque_movimentacoes(produto_id);
+
+        -- 7. PESSOAS
+        CREATE TABLE IF NOT EXISTS pessoas (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            empresa_id TEXT NOT NULL REFERENCES empresas(id),
+            tipo_cadastro TEXT NOT NULL DEFAULT 'CLIENTE', -- 'CLIENTE', 'FORNECEDOR', 'PRODUTOR', 'REVENDEDOR', 'FUNCIONARIO', 'PORTADOR', 'TRANSPORTADOR', 'CLIENTE_FORNECEDOR'
+            tipo TEXT NOT NULL DEFAULT 'FISICA', -- 'FISICA', 'JURIDICA'
+            nome_razaosocial TEXT NOT NULL,
+            nome_fantasia TEXT,
+            cpf_cnpj TEXT,
+            foto_base64 TEXT,
+            codigo_interno TEXT,
+
+            -- Pessoa Física
+            sexo TEXT,
+            rg TEXT,
+            rg_orgao_emissor TEXT,
+            rg_data_emissao TEXT,
+            data_nascimento TEXT,
+            naturalidade TEXT,
+            estado_civil TEXT,
+            nome_mae TEXT,
+            profissao TEXT,
+
+            -- Pessoa Jurídica
+            inscricao_estadual TEXT,
+            inscricao_municipal TEXT,
+            inscricao_suframa TEXT,
+            cnae_principal TEXT,
+            data_fundacao TEXT,
+            optante_simples INTEGER DEFAULT 0,
+
+            -- Endereço Principal
+            cep TEXT,
+            logradouro TEXT,
+            numero TEXT,
+            complemento TEXT,
+            bairro TEXT,
+            municipio TEXT,
+            uf TEXT,
+            codigo_ibge TEXT,
+            pais TEXT DEFAULT 'BRASIL',
+
+            -- Contato
+            email TEXT,
+            email_principal TEXT,
+            email_financeiro TEXT,
+            telefone TEXT,
+            telefone_fixo TEXT,
+            celular TEXT,
+            whatsapp TEXT,
+            site TEXT,
+
+            -- Crédito & Financeiro
+            is_cliente INTEGER NOT NULL DEFAULT 1,
+            is_fornecedor INTEGER NOT NULL DEFAULT 0,
+            limite_credito REAL DEFAULT 5000.0,
+            limite_credito_validade TEXT,
+            classificacao_credito TEXT DEFAULT 'NAO_DEFINIDO',
+            dia_vencimento_preferencial INTEGER,
+            dias_aviso_antes_vencimento INTEGER,
+            data_ultima_compra TEXT,
+            score_credito INTEGER DEFAULT 700,
+
+            -- Comercial
+            vendedor_id TEXT REFERENCES usuarios(id),
+            regiao TEXT,
+            convenio TEXT,
+            classe TEXT,
+            tabela_preco_id TEXT,
+            condicao_pgto_padrao TEXT,
+
+            -- Fiscal
+            contribuinte_icms TEXT DEFAULT 'NAO_CONTRIBUINTE',
+            substituto_tributario INTEGER DEFAULT 0,
+            consumidor_final INTEGER DEFAULT 1,
+
+            -- Observações
+            observacoes TEXT,
+            observacoes_internas TEXT,
+
+            -- Controle
+            ativo INTEGER NOT NULL DEFAULT 1,
+            bloqueado INTEGER NOT NULL DEFAULT 0,
+            motivo_bloqueio TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_pessoas_sync ON pessoas(x_sync_status, updated_at);
+        CREATE INDEX IF NOT EXISTS idx_pessoas_cpf_cnpj ON pessoas(cpf_cnpj);
+
+        -- 8. VENDAS
+        CREATE TABLE IF NOT EXISTS vendas (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            filial_id TEXT NOT NULL REFERENCES filiais(id),
+            deposito_id TEXT NOT NULL REFERENCES depositos(id),
+            cliente_id TEXT REFERENCES pessoas(id),
+            vendedor_id TEXT,
+            numero_venda INTEGER NOT NULL,
+            status TEXT NOT NULL DEFAULT 'ABERTA',
+            valor_subtotal REAL NOT NULL DEFAULT 0.0,
+            valor_desconto REAL NOT NULL DEFAULT 0.0,
+            valor_total REAL NOT NULL DEFAULT 0.0,
+            observacoes TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_vendas_sync ON vendas(x_sync_status, updated_at);
+        CREATE INDEX IF NOT EXISTS idx_vendas_filial ON vendas(filial_id);
+        CREATE INDEX IF NOT EXISTS idx_vendas_cliente ON vendas(cliente_id);
+
+        -- 9. VENDAS_ITENS
+        CREATE TABLE IF NOT EXISTS vendas_itens (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            venda_id TEXT NOT NULL REFERENCES vendas(id) ON DELETE CASCADE,
+            produto_id TEXT NOT NULL REFERENCES produtos(id),
+            item_ordem INTEGER NOT NULL,
+            quantidade REAL NOT NULL,
+            preco_unitario REAL NOT NULL,
+            desconto_unitario REAL NOT NULL DEFAULT 0.0,
+            valor_total REAL NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_vendas_itens_sync ON vendas_itens(x_sync_status, updated_at);
+        CREATE INDEX IF NOT EXISTS idx_vendas_itens_venda ON vendas_itens(venda_id);
+
+        -- 10. VENDAS_PAGAMENTOS
+        CREATE TABLE IF NOT EXISTS vendas_pagamentos (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            venda_id TEXT NOT NULL REFERENCES vendas(id) ON DELETE CASCADE,
+            forma_pagamento TEXT NOT NULL,
+            valor REAL NOT NULL,
+            troco REAL NOT NULL DEFAULT 0.0,
+            nsu_autorizacao TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_vendas_pag_sync ON vendas_pagamentos(x_sync_status, updated_at);
+        CREATE INDEX IF NOT EXISTS idx_vendas_pag_venda ON vendas_pagamentos(venda_id);
+
+        -- 11. DOCUMENTOS_FISCAIS
+        CREATE TABLE IF NOT EXISTS documentos_fiscais (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            filial_id TEXT NOT NULL REFERENCES filiais(id),
+            venda_id TEXT REFERENCES vendas(id),
+            modelo TEXT NOT NULL,
+            serie INTEGER NOT NULL DEFAULT 1,
+            numero INTEGER NOT NULL,
+            chave_acesso TEXT UNIQUE,
+            status TEXT NOT NULL DEFAULT 'DIGITACAO',
+            xml_envio TEXT,
+            xml_retorno TEXT,
+            motivo_status TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_doc_fiscais_sync ON documentos_fiscais(x_sync_status, updated_at);
+        CREATE INDEX IF NOT EXISTS idx_doc_fiscais_venda ON documentos_fiscais(venda_id);
+
+        -- 12. DOCUMENTOS_FISCAIS_EVENTOS
+        CREATE TABLE IF NOT EXISTS documentos_fiscais_eventos (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            documento_fiscal_id TEXT NOT NULL REFERENCES documentos_fiscais(id),
+            tipo_evento TEXT NOT NULL,
+            sequencia INTEGER NOT NULL DEFAULT 1,
+            protocolo TEXT,
+            xml_evento TEXT,
+            status_retorno INTEGER
+        );
+        CREATE INDEX IF NOT EXISTS idx_doc_eventos_sync ON documentos_fiscais_eventos(x_sync_status, updated_at);
+
+        -- 13. FINANCEIRO_LANCAMENTOS
+        CREATE TABLE IF NOT EXISTS financeiro_lancamentos (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            filial_id TEXT NOT NULL REFERENCES filiais(id),
+            pessoa_id TEXT REFERENCES pessoas(id),
+            venda_id TEXT REFERENCES vendas(id),
+            tipo TEXT NOT NULL,
+            descricao TEXT NOT NULL,
+            valor_total REAL NOT NULL,
+            valor_pago REAL NOT NULL DEFAULT 0.0,
+            data_vencimento TEXT NOT NULL,
+            data_pagamento TEXT,
+            status TEXT NOT NULL DEFAULT 'PENDENTE'
+        );
+        CREATE INDEX IF NOT EXISTS idx_fin_lanc_sync ON financeiro_lancamentos(x_sync_status, updated_at);
+
+        -- 14. CAIXA_MOVIMENTACOES
+        CREATE TABLE IF NOT EXISTS caixa_movimentacoes (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            filial_id TEXT NOT NULL REFERENCES filiais(id),
+            dispositivo_id TEXT REFERENCES dispositivos(id),
+            tipo TEXT NOT NULL,
+            valor REAL NOT NULL,
+            observacao TEXT,
+            usuario_id TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_caixa_mov_sync ON caixa_movimentacoes(x_sync_status, updated_at);
+
+        -- 15. DISPOSITIVOS
+        CREATE TABLE IF NOT EXISTS dispositivos (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            filial_id TEXT NOT NULL REFERENCES filiais(id),
+            nome_dispositivo TEXT NOT NULL,
+            identificador_hardware TEXT NOT NULL,
+            chave_publica TEXT,
+            ultimo_visto_em TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_dispositivos_sync ON dispositivos(x_sync_status, updated_at);
+
+        -- 16. TRIBUTACAO_REGRAS
+        CREATE TABLE IF NOT EXISTS tributacao_regras (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            empresa_id TEXT NOT NULL REFERENCES empresas(id),
+            ncm TEXT NOT NULL,
+            uf_origem TEXT NOT NULL DEFAULT 'SP',
+            uf_destino TEXT NOT NULL DEFAULT 'SP',
+            crt INTEGER NOT NULL DEFAULT 1,
+            cfop_estado TEXT NOT NULL DEFAULT '5102',
+            cfop_interestado TEXT NOT NULL DEFAULT '6102',
+            csosn TEXT DEFAULT '102',
+            cst_icms TEXT DEFAULT '00',
+            aliquota_icms REAL NOT NULL DEFAULT 0.0,
+            aliquota_red_bc_icms REAL NOT NULL DEFAULT 0.0,
+            cst_pis TEXT DEFAULT '07',
+            aliquota_pis REAL NOT NULL DEFAULT 0.0,
+            cst_cofins TEXT DEFAULT '07',
+            aliquota_cofins REAL NOT NULL DEFAULT 0.0,
+            aliquota_ibpt_nacional REAL NOT NULL DEFAULT 4.20,
+            aliquota_ibpt_estadual REAL NOT NULL DEFAULT 12.00
+        );
+        CREATE INDEX IF NOT EXISTS idx_trib_regras_sync ON tributacao_regras(x_sync_status, updated_at);
+        CREATE INDEX IF NOT EXISTS idx_trib_regras_ncm ON tributacao_regras(ncm);
+
+        -- 17. NFE_ENTRADAS
+        CREATE TABLE IF NOT EXISTS nfe_entradas (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            filial_id TEXT NOT NULL REFERENCES filiais(id),
+            fornecedor_id TEXT REFERENCES pessoas(id),
+            chave_acesso TEXT UNIQUE NOT NULL,
+            numero TEXT NOT NULL,
+            serie TEXT NOT NULL,
+            cnpj_emitente TEXT NOT NULL,
+            nome_emitente TEXT NOT NULL,
+            data_emissao TEXT NOT NULL,
+            valor_total REAL NOT NULL DEFAULT 0.0,
+            status_manifestacao TEXT NOT NULL DEFAULT 'SEM_MANIFESTO',
+            xml_conteudo TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_nfe_entradas_sync ON nfe_entradas(x_sync_status, updated_at);
+        CREATE INDEX IF NOT EXISTS idx_nfe_entradas_chave ON nfe_entradas(chave_acesso);
+
+        -- 18. NFE_ENTRADAS_ITENS
+        CREATE TABLE IF NOT EXISTS nfe_entradas_itens (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            nfe_entrada_id TEXT NOT NULL REFERENCES nfe_entradas(id) ON DELETE CASCADE,
+            produto_id TEXT REFERENCES produtos(id),
+            numero_item INTEGER NOT NULL,
+            codigo_fornecedor TEXT NOT NULL,
+            descricao TEXT NOT NULL,
+            ncm TEXT,
+            cfop TEXT NOT NULL,
+            unidade_compra TEXT NOT NULL,
+            quantidade_compra REAL NOT NULL,
+            valor_unitario REAL NOT NULL,
+            valor_total REAL NOT NULL,
+            fator_conversao REAL NOT NULL DEFAULT 1.0
+        );
+        CREATE INDEX IF NOT EXISTS idx_nfe_entradas_itens_sync ON nfe_entradas_itens(x_sync_status, updated_at);
+
+        -- 19. COMPRAS_PEDIDOS
+        CREATE TABLE IF NOT EXISTS compras_pedidos (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            filial_id TEXT NOT NULL REFERENCES filiais(id),
+            fornecedor_id TEXT REFERENCES pessoas(id),
+            numero_pedido TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'RASCUNHO',
+            valor_total REAL NOT NULL DEFAULT 0.0,
+            observacoes TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_compras_ped_sync ON compras_pedidos(x_sync_status, updated_at);
+
+        -- 20. COMPRAS_PEDIDOS_ITENS
+        CREATE TABLE IF NOT EXISTS compras_pedidos_itens (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            pedido_compra_id TEXT NOT NULL REFERENCES compras_pedidos(id) ON DELETE CASCADE,
+            produto_id TEXT NOT NULL REFERENCES produtos(id),
+            quantidade REAL NOT NULL,
+            fator_conversao REAL NOT NULL DEFAULT 1.0,
+            preco_custo_unitario REAL NOT NULL,
+            valor_total REAL NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_compras_ped_itens_sync ON compras_pedidos_itens(x_sync_status, updated_at);
+
+        -- 21. ESTOQUE_TRANSFERENCIAS
+        CREATE TABLE IF NOT EXISTS estoque_transferencias (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            deposito_origem_id TEXT NOT NULL REFERENCES depositos(id),
+            deposito_destino_id TEXT NOT NULL REFERENCES depositos(id),
+            numero_transferencia INTEGER NOT NULL,
+            status TEXT NOT NULL DEFAULT 'CONCLUIDA',
+            observacao TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_est_transf_sync ON estoque_transferencias(x_sync_status, updated_at);
+
+        -- 22. ESTOQUE_TRANSFERENCIAS_ITENS
+        CREATE TABLE IF NOT EXISTS estoque_transferencias_itens (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            transferencia_id TEXT NOT NULL REFERENCES estoque_transferencias(id) ON DELETE CASCADE,
+            produto_id TEXT NOT NULL REFERENCES produtos(id),
+            quantidade REAL NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_est_transf_itens_sync ON estoque_transferencias_itens(x_sync_status, updated_at);
+
+        -- 23. PLANO_CONTAS
+        CREATE TABLE IF NOT EXISTS plano_contas (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            empresa_id TEXT NOT NULL REFERENCES empresas(id),
+            codigo TEXT NOT NULL,
+            descricao TEXT NOT NULL,
+            tipo TEXT NOT NULL, -- 'RECEITA', 'DESPESA_VARIAVEL', 'DESPESA_FIXA', 'IMPOSTO'
+            nivel INTEGER NOT NULL DEFAULT 1,
+            pai_id TEXT REFERENCES plano_contas(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_plano_contas_sync ON plano_contas(x_sync_status, updated_at);
+
+        -- 24. CENTRO_CUSTOS
+        CREATE TABLE IF NOT EXISTS centro_custos (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            empresa_id TEXT NOT NULL REFERENCES empresas(id),
+            codigo TEXT NOT NULL,
+            nome TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_centro_custos_sync ON centro_custos(x_sync_status, updated_at);
+
+        -- 25. OFX_EXTRATOS
+        CREATE TABLE IF NOT EXISTS ofx_extratos (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            filial_id TEXT NOT NULL REFERENCES filiais(id),
+            fitid TEXT UNIQUE NOT NULL,
+            data_transacao TEXT NOT NULL,
+            valor REAL NOT NULL,
+            tipo_transacao TEXT NOT NULL,
+            memo TEXT,
+            status_conciliacao TEXT NOT NULL DEFAULT 'PENDENTE',
+            financeiro_lancamento_id TEXT REFERENCES financeiro_lancamentos(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_ofx_extratos_sync ON ofx_extratos(x_sync_status, updated_at);
+
+        -- 26. BOLETOS_EMITIDOS
+        CREATE TABLE IF NOT EXISTS boletos_emitidos (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            financeiro_lancamento_id TEXT NOT NULL REFERENCES financeiro_lancamentos(id),
+            nosso_numero TEXT NOT NULL,
+            linha_digitavel TEXT NOT NULL,
+            codigo_barras TEXT NOT NULL,
+            pix_qrcode_url TEXT,
+            valor REAL NOT NULL,
+            data_vencimento TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'EMITIDO'
+        );
+        CREATE INDEX IF NOT EXISTS idx_boletos_sync ON boletos_emitidos(x_sync_status, updated_at);
+
+        -- 27. USUARIOS
+        CREATE TABLE IF NOT EXISTS usuarios (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            empresa_id TEXT NOT NULL REFERENCES empresas(id),
+            nome TEXT NOT NULL,
+            username TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            perfil TEXT NOT NULL DEFAULT 'OPERADOR', -- 'OPERADOR', 'GERENTE', 'ADMIN'
+            ativo INTEGER NOT NULL DEFAULT 1
+        );
+        CREATE INDEX IF NOT EXISTS idx_usuarios_sync ON usuarios(x_sync_status, updated_at);
+
+        -- 28. USUARIOS_PERMISSOES
+        CREATE TABLE IF NOT EXISTS usuarios_permissoes (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            usuario_id TEXT NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+            permissao TEXT NOT NULL,
+            concedida INTEGER NOT NULL DEFAULT 1
+        );
+        CREATE INDEX IF NOT EXISTS idx_usuarios_perm_sync ON usuarios_permissoes(x_sync_status, updated_at);
+
+        -- 29. ALCADAS_DESCONTO
+        CREATE TABLE IF NOT EXISTS alcadas_desconto (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            perfil TEXT UNIQUE NOT NULL, -- 'OPERADOR', 'GERENTE', 'ADMIN'
+            percentual_max_desconto REAL NOT NULL DEFAULT 5.0
+        );
+        CREATE INDEX IF NOT EXISTS idx_alcadas_sync ON alcadas_desconto(x_sync_status, updated_at);
+
+        -- 30. AUDIT_LOGS
+        CREATE TABLE IF NOT EXISTS audit_logs (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            usuario_id TEXT REFERENCES usuarios(id),
+            usuario_nome TEXT,
+            acao TEXT NOT NULL,
+            recurso TEXT NOT NULL,
+            detalhes TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_audit_logs_sync ON audit_logs(x_sync_status, updated_at);
+
+        -- 31. RELATORIOS_CONFIG
+        CREATE TABLE IF NOT EXISTS relatorios_config (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            nome TEXT NOT NULL,
+            tipo_relatorio TEXT NOT NULL,
+            parametros_json TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_relatorios_sync ON relatorios_config(x_sync_status, updated_at);
+
+        -- 32. CURVA_ABC_HISTORICO
+        CREATE TABLE IF NOT EXISTS curva_abc_historico (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            filial_id TEXT NOT NULL REFERENCES filiais(id),
+            produto_id TEXT NOT NULL REFERENCES produtos(id),
+            faturamento_acumulado REAL NOT NULL,
+            percentual_acumulado REAL NOT NULL,
+            classe TEXT NOT NULL -- 'A', 'B', 'C'
+        );
+        CREATE INDEX IF NOT EXISTS idx_curva_abc_sync ON curva_abc_historico(x_sync_status, updated_at);
+
+        -- 33. PRODUTOS_GRADES
+        CREATE TABLE IF NOT EXISTS produtos_grades (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            empresa_id TEXT NOT NULL REFERENCES empresas(id),
+            nome TEXT NOT NULL,
+            eixo1_nome TEXT NOT NULL DEFAULT 'Tamanho',
+            eixo2_nome TEXT DEFAULT 'Cor'
+        );
+        CREATE INDEX IF NOT EXISTS idx_grades_sync ON produtos_grades(x_sync_status, updated_at);
+
+        -- 34. PRODUTOS_GRADES_EIXOS
+        CREATE TABLE IF NOT EXISTS produtos_grades_eixos (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            grade_id TEXT NOT NULL REFERENCES produtos_grades(id) ON DELETE CASCADE,
+            tipo_eixo INTEGER NOT NULL DEFAULT 1,
+            valor TEXT NOT NULL,
+            ordem INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_grades_eixos_sync ON produtos_grades_eixos(x_sync_status, updated_at);
+
+        -- 35. PRODUTOS_VARIANTES (SKU-filhos da Grade)
+        CREATE TABLE IF NOT EXISTS produtos_variantes (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            produto_pai_id TEXT NOT NULL REFERENCES produtos(id) ON DELETE CASCADE,
+            codigo_sku TEXT UNIQUE NOT NULL,
+            codigo_barras TEXT,
+            tamanho TEXT,
+            cor TEXT,
+            preco_venda REAL,
+            ativo INTEGER NOT NULL DEFAULT 1
+        );
+        CREATE INDEX IF NOT EXISTS idx_variantes_sync ON produtos_variantes(x_sync_status, updated_at);
+        CREATE INDEX IF NOT EXISTS idx_variantes_pai ON produtos_variantes(produto_pai_id);
+
+        -- 36. XML_ENTRADA_PENDENTES
+        CREATE TABLE IF NOT EXISTS xml_entrada_pendentes (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            filial_id TEXT NOT NULL REFERENCES filiais(id),
+            chave_nfe TEXT UNIQUE NOT NULL,
+            numero_nota TEXT NOT NULL,
+            fornecedor_cnpj TEXT NOT NULL,
+            fornecedor_nome TEXT NOT NULL,
+            xml_conteudo TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'PENDENTE'
+        );
+        CREATE INDEX IF NOT EXISTS idx_xml_pend_sync ON xml_entrada_pendentes(x_sync_status, updated_at);
+
+        -- 37. XML_ENTRADA_ITENS_GRADE
+        CREATE TABLE IF NOT EXISTS xml_entrada_itens_grade (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            xml_pendente_id TEXT NOT NULL REFERENCES xml_entrada_pendentes(id) ON DELETE CASCADE,
+            item_seq INTEGER NOT NULL,
+            variante_id TEXT NOT NULL REFERENCES produtos_variantes(id),
+            quantidade REAL NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_xml_itens_grade_sync ON xml_entrada_itens_grade(x_sync_status, updated_at);
+
+        -- 38. ETIQUETAS_MODELOS
+        CREATE TABLE IF NOT EXISTS etiquetas_modelos (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            empresa_id TEXT NOT NULL REFERENCES empresas(id),
+            nome TEXT NOT NULL,
+            tipo_impressora TEXT NOT NULL DEFAULT 'ZEBRA_ZPL', -- 'ZEBRA_ZPL', 'ARGOX_PPLB', 'PIMACO_A4'
+            largura_mm REAL NOT NULL DEFAULT 100.0,
+            altura_mm REAL NOT NULL DEFAULT 30.0,
+            colunas INTEGER NOT NULL DEFAULT 1,
+            zpl_template TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_etq_modelos_sync ON etiquetas_modelos(x_sync_status, updated_at);
+
+        -- 39. ETIQUETAS_FILAS
+        CREATE TABLE IF NOT EXISTS etiquetas_filas (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            empresa_id TEXT NOT NULL REFERENCES empresas(id),
+            modelo_id TEXT REFERENCES etiquetas_modelos(id),
+            produto_id TEXT REFERENCES produtos(id),
+            variante_id TEXT REFERENCES produtos_variantes(id),
+            quantidade INTEGER NOT NULL DEFAULT 1,
+            status TEXT NOT NULL DEFAULT 'PENDENTE'
+        );
+        CREATE INDEX IF NOT EXISTS idx_etq_filas_sync ON etiquetas_filas(x_sync_status, updated_at);
+
+        -- 40. PROMOCOES
+        CREATE TABLE IF NOT EXISTS promocoes (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            empresa_id TEXT NOT NULL REFERENCES empresas(id),
+            nome TEXT NOT NULL,
+            tipo_promocao TEXT NOT NULL, -- 'ATACADO_QTD', 'LEVE_X_PAGUE_Y', 'DESCONTO_PERCENTUAL'
+            produto_id TEXT REFERENCES produtos(id),
+            quantidade_minima REAL NOT NULL DEFAULT 1.0,
+            preco_promocional REAL,
+            percentual_desconto REAL,
+            quantidade_pague REAL,
+            ativo INTEGER NOT NULL DEFAULT 1
+        );
+        CREATE INDEX IF NOT EXISTS idx_promocoes_sync ON promocoes(x_sync_status, updated_at);
+
+        -- 41. PROMOCOES_ITENS
+        CREATE TABLE IF NOT EXISTS promocoes_itens (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            promocao_id TEXT NOT NULL REFERENCES promocoes(id) ON DELETE CASCADE,
+            produto_id TEXT NOT NULL REFERENCES produtos(id),
+            quantidade REAL NOT NULL DEFAULT 1.0
+        );
+        CREATE INDEX IF NOT EXISTS idx_promocoes_itens_sync ON promocoes_itens(x_sync_status, updated_at);
+
+        -- 42. PIX_CHAVES
+        CREATE TABLE IF NOT EXISTS pix_chaves (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            empresa_id TEXT NOT NULL REFERENCES empresas(id),
+            tipo_chave TEXT NOT NULL, -- 'CNPJ', 'CPF', 'EMAIL', 'TELEFONE', 'EVP'
+            chave TEXT NOT NULL,
+            merchant_name TEXT NOT NULL,
+            merchant_city TEXT NOT NULL,
+            padrao INTEGER NOT NULL DEFAULT 1
+        );
+        CREATE INDEX IF NOT EXISTS idx_pix_chaves_sync ON pix_chaves(x_sync_status, updated_at);
+
+        -- 43. PIX_TRANSACOES
+        CREATE TABLE IF NOT EXISTS pix_transacoes (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            venda_id TEXT REFERENCES vendas(id),
+            txid TEXT UNIQUE NOT NULL,
+            valor REAL NOT NULL,
+            payload_emv TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'PENDENTE' -- 'PENDENTE', 'CONCLUIDO', 'CANCELADO'
+        );
+        CREATE INDEX IF NOT EXISTS idx_pix_tx_sync ON pix_transacoes(x_sync_status, updated_at);
+
+        -- 44. COMANDAS
+        CREATE TABLE IF NOT EXISTS comandas (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            filial_id TEXT NOT NULL REFERENCES filiais(id),
+            numero_comanda TEXT UNIQUE NOT NULL,
+            cliente_nome TEXT DEFAULT 'CLIENTE BALCAO',
+            vendedor_id TEXT REFERENCES usuarios(id),
+            valor_total REAL NOT NULL DEFAULT 0.0,
+            status TEXT NOT NULL DEFAULT 'ABERTA' -- 'ABERTA', 'AGUARDANDO_PAGAMENTO', 'FATURADA', 'CANCELADA'
+        );
+        CREATE INDEX IF NOT EXISTS idx_comandas_sync ON comandas(x_sync_status, updated_at);
+
+        -- 45. COMANDAS_ITENS
+        CREATE TABLE IF NOT EXISTS comandas_itens (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            comanda_id TEXT NOT NULL REFERENCES comandas(id) ON DELETE CASCADE,
+            produto_id TEXT NOT NULL REFERENCES produtos(id),
+            variante_id TEXT REFERENCES produtos_variantes(id),
+            quantidade REAL NOT NULL,
+            preco_unitario REAL NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_comandas_itens_sync ON comandas_itens(x_sync_status, updated_at);
+
+        -- 46. CONDICIONAIS
+        CREATE TABLE IF NOT EXISTS condicionais (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            filial_id TEXT NOT NULL REFERENCES filiais(id),
+            numero_condicional TEXT UNIQUE NOT NULL,
+            cliente_id TEXT NOT NULL REFERENCES pessoas(id),
+            vendedor_id TEXT REFERENCES usuarios(id),
+            data_saida TEXT NOT NULL,
+            data_limite_devolucao TEXT NOT NULL,
+            valor_total_enviado REAL NOT NULL DEFAULT 0.0,
+            valor_total_devolvido REAL NOT NULL DEFAULT 0.0,
+            valor_total_faturado REAL NOT NULL DEFAULT 0.0,
+            status TEXT NOT NULL DEFAULT 'EM_ABERTO' -- 'EM_ABERTO', 'FINALIZADO_PARCIAL', 'FINALIZADO_TOTAL', 'CANCELADO'
+        );
+        CREATE INDEX IF NOT EXISTS idx_condicionais_sync ON condicionais(x_sync_status, updated_at);
+
+        -- 47. CONDICIONAIS_ITENS
+        CREATE TABLE IF NOT EXISTS condicionais_itens (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            condicional_id TEXT NOT NULL REFERENCES condicionais(id) ON DELETE CASCADE,
+            produto_id TEXT NOT NULL REFERENCES produtos(id),
+            variante_id TEXT REFERENCES produtos_variantes(id),
+            codigo_barras TEXT,
+            quantidade_enviada REAL NOT NULL,
+            quantidade_devolvida REAL NOT NULL DEFAULT 0.0,
+            quantidade_faturada REAL NOT NULL DEFAULT 0.0,
+            preco_unitario REAL NOT NULL,
+            status TEXT NOT NULL DEFAULT 'ENVIADO' -- 'ENVIADO', 'DEVOLVIDO', 'FATURADO'
+        );
+        CREATE INDEX IF NOT EXISTS idx_condicionais_itens_sync ON condicionais_itens(x_sync_status, updated_at);
+
+        -- 48. VALE_TROCAS
+        CREATE TABLE IF NOT EXISTS vale_trocas (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            codigo_vale TEXT UNIQUE NOT NULL,
+            cliente_id TEXT NOT NULL REFERENCES pessoas(id),
+            valor_original REAL NOT NULL,
+            valor_bonus REAL NOT NULL DEFAULT 0.0,
+            valor_total_credito REAL NOT NULL,
+            saldo_disponivel REAL NOT NULL,
+            data_validade TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'ATIVO' -- 'ATIVO', 'UTILIZADO_PARCIAL', 'UTILIZADO_TOTAL', 'EXPIRADO'
+        );
+        CREATE INDEX IF NOT EXISTS idx_vale_trocas_sync ON vale_trocas(x_sync_status, updated_at);
+
+        -- 49. FICHA_FINANCEIRA_CLIENTE
+        CREATE TABLE IF NOT EXISTS ficha_financeira_cliente (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            cliente_id TEXT NOT NULL REFERENCES pessoas(id),
+            origem TEXT NOT NULL, -- 'CONDICIONAL_FATURADA', 'VALE_TROCA', 'PAGAMENTO_RECEBIDO'
+            referencia_id TEXT,
+            tipo_movimento TEXT NOT NULL, -- 'DEBITO', 'CREDITO'
+            valor REAL NOT NULL,
+            historico TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_ficha_fin_sync ON ficha_financeira_cliente(x_sync_status, updated_at);
+
+        -- 50. PESSOAS_ENDERECOS (Múltiplos Endereços)
+        CREATE TABLE IF NOT EXISTS pessoas_enderecos (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            pessoa_id TEXT NOT NULL REFERENCES pessoas(id) ON DELETE CASCADE,
+            tipo_endereco TEXT NOT NULL DEFAULT 'ENTREGA', -- 'PRINCIPAL', 'ENTREGA', 'COBRANCA', 'COMERCIAL'
+            cep TEXT NOT NULL,
+            logradouro TEXT NOT NULL,
+            numero TEXT NOT NULL,
+            complemento TEXT,
+            bairro TEXT NOT NULL,
+            municipio TEXT NOT NULL,
+            uf TEXT NOT NULL,
+            codigo_ibge TEXT,
+            pais TEXT DEFAULT 'BRASIL'
+        );
+        CREATE INDEX IF NOT EXISTS idx_pessoas_end_sync ON pessoas_enderecos(x_sync_status, updated_at);
+
+        -- 51. PESSOAS_CONTATOS (Múltiplos Contatos)
+        CREATE TABLE IF NOT EXISTS pessoas_contatos (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            pessoa_id TEXT NOT NULL REFERENCES pessoas(id) ON DELETE CASCADE,
+            tipo_contato TEXT NOT NULL DEFAULT 'COMERCIAL', -- 'COMERCIAL', 'FINANCEIRO', 'COMPRAS', 'REPRESENTANTE'
+            nome TEXT NOT NULL,
+            cargo TEXT,
+            telefone TEXT,
+            celular TEXT,
+            email TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_pessoas_cont_sync ON pessoas_contatos(x_sync_status, updated_at);
+
+        -- 52. PESSOAS_REFERENCIAS (Referências Comerciais)
+        CREATE TABLE IF NOT EXISTS pessoas_referencias (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            pessoa_id TEXT NOT NULL REFERENCES pessoas(id) ON DELETE CASCADE,
+            nome_empresa TEXT NOT NULL,
+            cnpj TEXT,
+            telefone TEXT,
+            contato TEXT,
+            limite_concedido REAL DEFAULT 0.0,
+            tempo_relacionamento TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_pessoas_ref_sync ON pessoas_referencias(x_sync_status, updated_at);
+
+        -- 53. PESSOAS_VEICULOS (Veículos vinculados a clientes/oficina/transportadora)
+        CREATE TABLE IF NOT EXISTS pessoas_veiculos (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            pessoa_id TEXT NOT NULL REFERENCES pessoas(id) ON DELETE CASCADE,
+            placa TEXT NOT NULL,
+            modelo TEXT NOT NULL,
+            marca TEXT NOT NULL,
+            ano_fabricacao INTEGER,
+            ano_modelo INTEGER,
+            renavam TEXT,
+            cor TEXT,
+            km_atual INTEGER DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_pessoas_veic_placa ON pessoas_veiculos(placa);
+
+        -- 54. CONFIGURACOES_SISTEMA
+        CREATE TABLE IF NOT EXISTS configuracoes_sistema (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            empresa_id TEXT NOT NULL REFERENCES empresas(id),
+            chave TEXT NOT NULL,
+            valor TEXT NOT NULL,
+            grupo TEXT NOT NULL DEFAULT 'GERAL',
+            UNIQUE(empresa_id, chave)
+        );
+        CREATE INDEX IF NOT EXISTS idx_config_sistema_empresa ON configuracoes_sistema(empresa_id, grupo);
+
+        -- 55. FILIAIS_NFE_CONFIG (NF-e Modelo 55)
+        CREATE TABLE IF NOT EXISTS filiais_nfe_config (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            filial_id TEXT UNIQUE NOT NULL REFERENCES filiais(id),
+            serie_nfe INTEGER NOT NULL DEFAULT 1,
+            proximo_numero_nfe INTEGER NOT NULL DEFAULT 1,
+            ambiente_nfe INTEGER NOT NULL DEFAULT 2,
+            tp_imp_danfe INTEGER NOT NULL DEFAULT 1,
+            tp_emis_nfe INTEGER NOT NULL DEFAULT 1,
+            ind_sinc INTEGER NOT NULL DEFAULT 1,
+            versao_xml TEXT NOT NULL DEFAULT '4.00',
+            logo_danfe_path TEXT,
+            xml_storage_path TEXT,
+            resp_tec_cnpj TEXT,
+            resp_tec_contato TEXT,
+            resp_tec_email TEXT,
+            resp_tec_fone TEXT,
+            resp_tec_id_csrt TEXT,
+            resp_tec_csrt TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_filiais_nfe_config_filial ON filiais_nfe_config(filial_id);
+
+        -- 56. FILIAIS_NFCE_CONFIG (NFC-e Modelo 65)
+        CREATE TABLE IF NOT EXISTS filiais_nfce_config (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            filial_id TEXT UNIQUE NOT NULL REFERENCES filiais(id),
+            serie_nfce INTEGER NOT NULL DEFAULT 1,
+            proximo_numero_nfce INTEGER NOT NULL DEFAULT 1,
+            ambiente_nfce INTEGER NOT NULL DEFAULT 2,
+            csc_id TEXT,
+            csc_token TEXT,
+            tp_emis_nfce INTEGER NOT NULL DEFAULT 1,
+            modelo_danfe_nfce TEXT NOT NULL DEFAULT 'PADRAO',
+            tp_imp_danfe_nfce INTEGER NOT NULL DEFAULT 1,
+            versao_qrcode TEXT NOT NULL DEFAULT '2.00',
+            qrcode_contingencia TEXT NOT NULL DEFAULT '2.00',
+            usar_tef INTEGER NOT NULL DEFAULT 0,
+            fuso_horario TEXT NOT NULL DEFAULT '-03:00',
+            mostrar_troco INTEGER NOT NULL DEFAULT 1,
+            enviar_codigo_barras INTEGER NOT NULL DEFAULT 1,
+            contingencia_timeout_ms INTEGER NOT NULL DEFAULT 5000,
+            xml_storage_path TEXT,
+            logo_danfce_path TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_filiais_nfce_config_filial ON filiais_nfce_config(filial_id);
+
+        -- 57. FILIAIS_NFSE_CONFIG (NFS-e Nota Fiscal de Serviço Eletrônica)
+        CREATE TABLE IF NOT EXISTS filiais_nfse_config (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            filial_id TEXT UNIQUE NOT NULL REFERENCES filiais(id),
+            ambiente_nfse INTEGER NOT NULL DEFAULT 2,
+            provedor_nfse TEXT NOT NULL DEFAULT 'NACIONAL',
+            url_ws_producao TEXT,
+            url_ws_homologacao TEXT,
+            usuario_ws TEXT,
+            senha_ws TEXT,
+            token_ws TEXT,
+            serie_rps TEXT NOT NULL DEFAULT '1',
+            proximo_numero_rps INTEGER NOT NULL DEFAULT 1,
+            tipo_rps INTEGER NOT NULL DEFAULT 1,
+            regime_especial_tributacao INTEGER NOT NULL DEFAULT 1,
+            natureza_operacao INTEGER NOT NULL DEFAULT 1,
+            item_lista_servico TEXT NOT NULL DEFAULT '14.01',
+            cod_tributacao_municipio TEXT,
+            cnae_servico TEXT NOT NULL DEFAULT '6201501',
+            aliquota_iss REAL NOT NULL DEFAULT 2.00,
+            iss_retido INTEGER NOT NULL DEFAULT 2,
+            responsavel_retencao INTEGER NOT NULL DEFAULT 1,
+            incentivador_cultural INTEGER NOT NULL DEFAULT 2,
+            optante_simples_nfse INTEGER NOT NULL DEFAULT 1,
+            xml_storage_path TEXT,
+            versao_abrasf TEXT NOT NULL DEFAULT '2.04',
+            usar_nfse_nacional INTEGER NOT NULL DEFAULT 1
+        );
+        CREATE INDEX IF NOT EXISTS idx_filiais_nfse_config_filial ON filiais_nfse_config(filial_id);
+
+        -- 58. NFSE_DOCUMENTOS (Notas Fiscais de Serviço Emitidas)
+        CREATE TABLE IF NOT EXISTS nfse_documentos (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            filial_id TEXT NOT NULL REFERENCES filiais(id),
+            numero_nfse INTEGER,
+            numero_rps INTEGER NOT NULL,
+            serie_rps TEXT NOT NULL,
+            dps_id TEXT NOT NULL,
+            chave_acesso_nacional TEXT,
+            tomador_cpf_cnpj TEXT NOT NULL,
+            tomador_nome TEXT NOT NULL,
+            valor_servicos REAL NOT NULL,
+            valor_iss REAL NOT NULL,
+            aliquota_iss REAL NOT NULL,
+            status TEXT NOT NULL DEFAULT 'autorizado',
+            xml_dps TEXT,
+            xml_nfse TEXT,
+            pdf_url TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_nfse_docs_filial ON nfse_documentos(filial_id);
+        CREATE INDEX IF NOT EXISTS idx_nfse_docs_status ON nfse_documentos(status);
+
+        -- 59. LLM_PROVIDERS
+        CREATE TABLE IF NOT EXISTS llm_providers (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            provider_type TEXT NOT NULL UNIQUE,
+            name TEXT NOT NULL,
+            api_key_encrypted TEXT,
+            api_url TEXT,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            default_model TEXT,
+            config_json TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_llm_prov_type ON llm_providers(provider_type);
+
+        -- 60. WHATSAPP_CONFIG
+        CREATE TABLE IF NOT EXISTS whatsapp_config (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+
+            filial_id TEXT NOT NULL REFERENCES filiais(id),
+            session_name TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'DISCONNECTED',
+            api_url TEXT,
+            api_key_encrypted TEXT,
+            phone_number TEXT,
+            auto_reply_enabled INTEGER NOT NULL DEFAULT 0,
+            webhook_secret TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_wa_config_filial ON whatsapp_config(filial_id);
+        ",
+    )?;
+
+    // Executa migração de colunas dinamicamente para bancos de dados que já existiam no disco
+    migrate_pessoas_columns(conn)?;
+    migrate_empresas_columns(conn)?;
+    migrate_filiais_nfe_config_columns(conn)?;
+    migrate_filiais_nfce_config_columns(conn)?;
+    migrate_filiais_nfse_config_columns(conn)?;
+
+    info!("Schema DDL executado com sucesso. Todas as 60 tabelas criadas e migradas.");
+    Ok(())
+}
+
+fn migrate_empresas_columns(conn: &Connection) -> Result<()> {
+    let mut stmt = conn.prepare("PRAGMA table_info(empresas)")?;
+    let existing_cols: Vec<String> = stmt
+        .query_map([], |r| r.get(1))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    let new_columns = vec![
+        ("inscricao_municipal", "TEXT"),
+        ("cnae_principal", "TEXT"),
+        ("cnae_secundarios", "TEXT"),
+        ("crt", "INTEGER DEFAULT 1"),
+        ("regime_pis_cofins", "TEXT DEFAULT 'CUMULATIVO'"),
+        ("regime_apuracao", "TEXT DEFAULT 'LUCRO_PRESUMIDO'"),
+        ("aliquota_simples_anexo", "REAL DEFAULT 4.0"),
+        ("p_cred_sn", "REAL DEFAULT 1.25"),
+        ("suframa", "TEXT"),
+        ("nire", "TEXT"),
+        ("natureza_juridica", "TEXT"),
+        ("logradouro", "TEXT"),
+        ("numero", "TEXT"),
+        ("complemento", "TEXT"),
+        ("bairro", "TEXT"),
+        ("cidade", "TEXT"),
+        ("uf", "TEXT"),
+        ("cep", "TEXT"),
+        ("cod_municipio_ibge", "TEXT"),
+        ("pais", "TEXT DEFAULT 'BRASIL'"),
+        ("cod_pais_bacen", "TEXT DEFAULT '1058'"),
+        ("telefone_1", "TEXT"),
+        ("telefone_2", "TEXT"),
+        ("email", "TEXT"),
+        ("email_fiscal", "TEXT"),
+        ("site", "TEXT"),
+        ("responsavel", "TEXT"),
+        ("logo_base64", "TEXT"),
+        ("certificado_a1_alias", "TEXT"),
+        ("certificado_a1_validade", "TEXT"),
+        ("nicho_empresa", "TEXT DEFAULT 'VAREJO'"),
+        ("praca", "TEXT"),
+    ];
+
+    for (col_name, col_def) in new_columns {
+        if !existing_cols.contains(&col_name.to_string()) {
+            let alter_sql = format!("ALTER TABLE empresas ADD COLUMN {} {};", col_name, col_def);
+            let _ = conn.execute(&alter_sql, []);
+        }
+    }
+
+    Ok(())
+}
+
+fn migrate_pessoas_columns(conn: &Connection) -> Result<()> {
+    let mut stmt = conn.prepare("PRAGMA table_info(pessoas)")?;
+    let existing_cols: Vec<String> = stmt
+        .query_map([], |r| r.get(1))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    let new_columns = vec![
+        ("tipo_cadastro", "TEXT DEFAULT 'CLIENTE'"),
+        ("nome_fantasia", "TEXT"),
+        ("foto_base64", "TEXT"),
+        ("codigo_interno", "TEXT"),
+        ("sexo", "TEXT"),
+        ("rg", "TEXT"),
+        ("rg_orgao_emissor", "TEXT"),
+        ("rg_data_emissao", "TEXT"),
+        ("data_nascimento", "TEXT"),
+        ("naturalidade", "TEXT"),
+        ("estado_civil", "TEXT"),
+        ("nome_mae", "TEXT"),
+        ("profissao", "TEXT"),
+        ("inscricao_estadual", "TEXT"),
+        ("inscricao_municipal", "TEXT"),
+        ("inscricao_suframa", "TEXT"),
+        ("cnae_principal", "TEXT"),
+        ("data_fundacao", "TEXT"),
+        ("optante_simples", "INTEGER DEFAULT 0"),
+        ("cep", "TEXT"),
+        ("logradouro", "TEXT"),
+        ("numero", "TEXT"),
+        ("complemento", "TEXT"),
+        ("bairro", "TEXT"),
+        ("municipio", "TEXT"),
+        ("uf", "TEXT"),
+        ("codigo_ibge", "TEXT"),
+        ("pais", "TEXT DEFAULT 'BRASIL'"),
+        ("email_principal", "TEXT"),
+        ("email_financeiro", "TEXT"),
+        ("telefone_fixo", "TEXT"),
+        ("celular", "TEXT"),
+        ("whatsapp", "TEXT"),
+        ("site", "TEXT"),
+        ("limite_credito", "REAL DEFAULT 5000.0"),
+        ("limite_credito_validade", "TEXT"),
+        ("classificacao_credito", "TEXT DEFAULT 'NAO_DEFINIDO'"),
+        ("dia_vencimento_preferencial", "INTEGER"),
+        ("dias_aviso_antes_vencimento", "INTEGER"),
+        ("data_ultima_compra", "TEXT"),
+        ("score_credito", "INTEGER DEFAULT 700"),
+        ("vendedor_id", "TEXT"),
+        ("regiao", "TEXT"),
+        ("convenio", "TEXT"),
+        ("classe", "TEXT"),
+        ("tabela_preco_id", "TEXT"),
+        ("condicao_pgto_padrao", "TEXT"),
+        ("contribuinte_icms", "TEXT DEFAULT 'NAO_CONTRIBUINTE'"),
+        ("substituto_tributario", "INTEGER DEFAULT 0"),
+        ("consumidor_final", "INTEGER DEFAULT 1"),
+        ("observacoes", "TEXT"),
+        ("observacoes_internas", "TEXT"),
+        ("bloqueado", "INTEGER DEFAULT 0"),
+        ("motivo_bloqueio", "TEXT"),
+    ];
+
+    for (col_name, col_def) in new_columns {
+        if !existing_cols.contains(&col_name.to_string()) {
+            let alter_sql = format!("ALTER TABLE pessoas ADD COLUMN {} {};", col_name, col_def);
+            let _ = conn.execute(&alter_sql, []);
+        }
+    }
+
+    let _ = conn.execute("CREATE INDEX IF NOT EXISTS idx_pessoas_tipo_cad ON pessoas(tipo_cadastro);", []);
+
+    Ok(())
+}
+
+fn migrate_filiais_nfe_config_columns(conn: &Connection) -> Result<()> {
+    let mut stmt = conn.prepare("PRAGMA table_info(filiais_nfe_config)")?;
+    let existing_cols: Vec<String> = stmt
+        .query_map([], |r| r.get(1))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    let new_columns = vec![
+        ("tp_imp_danfe", "INTEGER DEFAULT 1"),
+        ("tp_emis_nfe", "INTEGER DEFAULT 1"),
+        ("ind_sinc", "INTEGER DEFAULT 1"),
+        ("versao_xml", "TEXT DEFAULT '4.00'"),
+        ("logo_danfe_path", "TEXT"),
+        ("xml_storage_path", "TEXT"),
+        ("resp_tec_cnpj", "TEXT"),
+        ("resp_tec_contato", "TEXT"),
+        ("resp_tec_email", "TEXT"),
+        ("resp_tec_fone", "TEXT"),
+        ("resp_tec_id_csrt", "TEXT"),
+        ("resp_tec_csrt", "TEXT"),
+    ];
+
+    for (col_name, col_def) in new_columns {
+        if !existing_cols.contains(&col_name.to_string()) {
+            let alter_sql = format!("ALTER TABLE filiais_nfe_config ADD COLUMN {} {};", col_name, col_def);
+            let _ = conn.execute(&alter_sql, []);
+        }
+    }
+
+    Ok(())
+}
+
+fn migrate_filiais_nfce_config_columns(conn: &Connection) -> Result<()> {
+    let mut stmt = conn.prepare("PRAGMA table_info(filiais_nfce_config)")?;
+    let existing_cols: Vec<String> = stmt
+        .query_map([], |r| r.get(1))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    let new_columns = vec![
+        ("csc_id", "TEXT"),
+        ("csc_token", "TEXT"),
+        ("tp_emis_nfce", "INTEGER DEFAULT 1"),
+        ("modelo_danfe_nfce", "TEXT DEFAULT 'PADRAO'"),
+        ("tp_imp_danfe_nfce", "INTEGER DEFAULT 1"),
+        ("versao_qrcode", "TEXT DEFAULT '2.00'"),
+        ("qrcode_contingencia", "TEXT DEFAULT '2.00'"),
+        ("usar_tef", "INTEGER DEFAULT 0"),
+        ("fuso_horario", "TEXT DEFAULT '-03:00'"),
+        ("mostrar_troco", "INTEGER DEFAULT 1"),
+        ("enviar_codigo_barras", "INTEGER DEFAULT 1"),
+        ("contingencia_timeout_ms", "INTEGER DEFAULT 5000"),
+        ("xml_storage_path", "TEXT"),
+        ("logo_danfce_path", "TEXT"),
+    ];
+
+    for (col_name, col_def) in new_columns {
+        if !existing_cols.contains(&col_name.to_string()) {
+            let alter_sql = format!("ALTER TABLE filiais_nfce_config ADD COLUMN {} {};", col_name, col_def);
+            let _ = conn.execute(&alter_sql, []);
+        }
+    }
+
+    Ok(())
+}
+
+fn migrate_filiais_nfse_config_columns(conn: &Connection) -> Result<()> {
+    let mut stmt = conn.prepare("PRAGMA table_info(filiais_nfse_config)")?;
+    let existing_cols: Vec<String> = stmt
+        .query_map([], |r| r.get(1))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    let new_columns = vec![
+        ("ambiente_nfse", "INTEGER DEFAULT 2"),
+        ("provedor_nfse", "TEXT DEFAULT 'NACIONAL'"),
+        ("url_ws_producao", "TEXT"),
+        ("url_ws_homologacao", "TEXT"),
+        ("usuario_ws", "TEXT"),
+        ("senha_ws", "TEXT"),
+        ("token_ws", "TEXT"),
+        ("serie_rps", "TEXT DEFAULT '1'"),
+        ("proximo_numero_rps", "INTEGER DEFAULT 1"),
+        ("tipo_rps", "INTEGER DEFAULT 1"),
+        ("regime_especial_tributacao", "INTEGER DEFAULT 1"),
+        ("natureza_operacao", "INTEGER DEFAULT 1"),
+        ("item_lista_servico", "TEXT DEFAULT '14.01'"),
+        ("cod_tributacao_municipio", "TEXT"),
+        ("cnae_servico", "TEXT DEFAULT '6201501'"),
+        ("aliquota_iss", "REAL DEFAULT 2.00"),
+        ("iss_retido", "INTEGER DEFAULT 2"),
+        ("responsavel_retencao", "INTEGER DEFAULT 1"),
+        ("incentivador_cultural", "INTEGER DEFAULT 2"),
+        ("optante_simples_nfse", "INTEGER DEFAULT 1"),
+        ("xml_storage_path", "TEXT"),
+        ("logo_danfse_path", "TEXT"),
+        ("versao_abrasf", "TEXT DEFAULT '2.04'"),
+        ("usar_nfse_nacional", "INTEGER DEFAULT 1"),
+    ];
+
+    for (col_name, col_def) in new_columns {
+        if !existing_cols.contains(&col_name.to_string()) {
+            let alter_sql = format!("ALTER TABLE filiais_nfse_config ADD COLUMN {} {};", col_name, col_def);
+            let _ = conn.execute(&alter_sql, []);
+        }
+    }
+
+    Ok(())
+}
