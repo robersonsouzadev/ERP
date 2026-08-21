@@ -5,6 +5,8 @@ import { AppHeader } from './components/shell/AppHeader';
 import { CommandBarModal } from './components/ui/CommandBarModal';
 import { ErrorBoundary } from './components/ui/ErrorBoundary';
 import { ThemeProvider } from './lib/theme';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { LoginPage } from './pages/LoginPage';
 
 // Páginas do Sistema
 import { DashboardPage } from './pages/DashboardPage';
@@ -53,10 +55,15 @@ import { AuditLogPage } from './pages/AuditLogPage';
 import { AiProvidersPanel } from './components/ai/AiProvidersPanel';
 
 function MainAppShell() {
+  const { isAuthenticated } = useAuth();
   const [collapsed, setCollapsed] = useState<boolean>(false);
   const [isCommandBarOpen, setIsCommandBarOpen] = useState<boolean>(false);
   const navigate = useNavigate();
   const location = useLocation();
+
+  if (!isAuthenticated) {
+    return <LoginPage />;
+  }
 
   // Mapeamento de tabKey baseado no pathname
   const activeTab = location.pathname.substring(1) || 'dashboard';
@@ -153,9 +160,11 @@ function MainAppShell() {
 export function App() {
   return (
     <ThemeProvider>
-      <BrowserRouter>
-        <MainAppShell />
-      </BrowserRouter>
+      <AuthProvider>
+        <BrowserRouter>
+          <MainAppShell />
+        </BrowserRouter>
+      </AuthProvider>
     </ThemeProvider>
   );
 }

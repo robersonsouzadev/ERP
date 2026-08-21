@@ -1,8 +1,8 @@
 use rusqlite::{Connection, Result};
 use tracing::info;
 
-/// Array of all 60 tables managed by the ERP system for sync validation.
-pub const ALL_TABLES: [&str; 60] = [
+/// Array of all 65 tables managed by the ERP system for sync validation.
+pub const ALL_TABLES: [&str; 65] = [
     "empresas",
     "filiais",
     "produtos",
@@ -63,6 +63,11 @@ pub const ALL_TABLES: [&str; 60] = [
     "nfse_documentos",
     "llm_providers",
     "whatsapp_config",
+    "funcionarios",
+    "funcionarios_filiais",
+    "funcionarios_metas",
+    "grupos_acesso",
+    "grupos_acesso_permissoes",
 ];
 
 /// Sync metadata columns required on EVERY table for local-first sync support.
@@ -1416,6 +1421,166 @@ pub fn create_tables(conn: &Connection) -> Result<()> {
             webhook_secret TEXT
         );
         CREATE INDEX IF NOT EXISTS idx_wa_config_filial ON whatsapp_config(filial_id);
+
+        -- 61. FUNCIONARIOS
+        CREATE TABLE IF NOT EXISTS funcionarios (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+            -- Dados Pessoais
+            codigo TEXT NOT NULL UNIQUE,
+            nome TEXT NOT NULL,
+            apelido TEXT,
+            tipo_pessoa TEXT NOT NULL DEFAULT 'FISICA',
+            cpf_cnpj TEXT,
+            rg TEXT,
+            cnh TEXT,
+            data_nascimento TEXT,
+            estado_civil TEXT,
+            genero TEXT,
+            email TEXT,
+            telefone TEXT,
+            celular TEXT,
+            cep TEXT,
+            endereco TEXT,
+            numero TEXT,
+            complemento TEXT,
+            bairro TEXT,
+            cidade TEXT,
+            uf TEXT DEFAULT 'MS',
+            observacoes TEXT,
+            -- Profissional & RH
+            tipo_funcionario TEXT NOT NULL DEFAULT 'FUNCIONARIO',
+            cargo TEXT,
+            departamento TEXT,
+            salario REAL DEFAULT 0.00,
+            data_admissao TEXT,
+            data_demissao TEXT,
+            formacao TEXT,
+            pis_pasep TEXT,
+            ctps_numero TEXT,
+            ctps_serie TEXT,
+            -- Acesso ao Sistema
+            username TEXT UNIQUE,
+            password_hash TEXT,
+            grupo_acesso_id TEXT,
+            tem_acesso_sistema INTEGER NOT NULL DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'ATIVO',
+            forcar_troca_senha INTEGER DEFAULT 0,
+            data_validade_acesso TEXT,
+            ultimo_login TEXT,
+            tentativas_login_falhas INTEGER DEFAULT 0,
+            -- Comissões
+            vendedor_codigo TEXT,
+            tipo_vendedor TEXT,
+            comissao_percentual REAL DEFAULT 0.00,
+            comissao_tipo_calculo TEXT DEFAULT 'PERCENTUAL_DIRETO',
+            comissao_libera_emissao_pct REAL DEFAULT 0.00,
+            comissao_libera_baixa_pct REAL DEFAULT 100.00,
+            comissao_desconta_icms INTEGER DEFAULT 1,
+            comissao_desconta_pis_cofins INTEGER DEFAULT 1,
+            comissao_inclui_ipi INTEGER DEFAULT 0,
+            comissao_dia_pagamento INTEGER DEFAULT 10,
+            supervisor_id TEXT,
+            gerente_id TEXT,
+            desconto_maximo_permitido REAL DEFAULT 0.00,
+            banco_favorecido TEXT,
+            agencia TEXT,
+            conta_corrente TEXT,
+            chave_pix TEXT,
+            -- Multi-filial
+            empresa_id TEXT NOT NULL,
+            filial_padrao_id TEXT,
+            acesso_todas_empresas INTEGER DEFAULT 0,
+            caixa_pdv_vinculado TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_funcionarios_sync ON funcionarios(x_sync_status, updated_at);
+        CREATE INDEX IF NOT EXISTS idx_funcionarios_empresa ON funcionarios(empresa_id);
+        CREATE INDEX IF NOT EXISTS idx_funcionarios_username ON funcionarios(username);
+        CREATE INDEX IF NOT EXISTS idx_funcionarios_status ON funcionarios(status);
+
+        -- 62. FUNCIONARIOS_FILIAIS
+        CREATE TABLE IF NOT EXISTS funcionarios_filiais (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+            funcionario_id TEXT NOT NULL,
+            empresa_id TEXT NOT NULL,
+            filial_id TEXT,
+            is_default INTEGER DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_func_filiais_sync ON funcionarios_filiais(x_sync_status, updated_at);
+        CREATE INDEX IF NOT EXISTS idx_func_filiais_func ON funcionarios_filiais(funcionario_id);
+
+        -- 63. FUNCIONARIOS_METAS
+        CREATE TABLE IF NOT EXISTS funcionarios_metas (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+            funcionario_id TEXT NOT NULL,
+            tipo_periodo TEXT NOT NULL DEFAULT 'MENSAL',
+            ano INTEGER NOT NULL,
+            periodo INTEGER NOT NULL,
+            meta_faturamento REAL DEFAULT 0.00,
+            meta_quantidade INTEGER DEFAULT 0,
+            meta_margem_minima REAL DEFAULT 0.00,
+            meta_novos_clientes INTEGER DEFAULT 0,
+            categoria_produto_id TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_func_metas_sync ON funcionarios_metas(x_sync_status, updated_at);
+        CREATE INDEX IF NOT EXISTS idx_func_metas_func ON funcionarios_metas(funcionario_id);
+
+        -- 64. GRUPOS_ACESSO
+        CREATE TABLE IF NOT EXISTS grupos_acesso (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+            nome TEXT NOT NULL UNIQUE,
+            descricao TEXT,
+            is_sistema INTEGER DEFAULT 0,
+            ativo INTEGER DEFAULT 1,
+            percentual_max_desconto REAL DEFAULT 5.0
+        );
+        CREATE INDEX IF NOT EXISTS idx_grupos_acesso_sync ON grupos_acesso(x_sync_status, updated_at);
+
+        -- 65. GRUPOS_ACESSO_PERMISSOES
+        CREATE TABLE IF NOT EXISTS grupos_acesso_permissoes (
+            id TEXT PRIMARY KEY NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            x_sync_status TEXT NOT NULL DEFAULT 'pending',
+            x_version INTEGER NOT NULL DEFAULT 1,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+            grupo_id TEXT NOT NULL,
+            modulo TEXT NOT NULL,
+            recurso TEXT NOT NULL,
+            pode_visualizar INTEGER DEFAULT 0,
+            pode_criar INTEGER DEFAULT 0,
+            pode_editar INTEGER DEFAULT 0,
+            pode_excluir INTEGER DEFAULT 0,
+            pode_especial INTEGER DEFAULT 0,
+            escopo_dados TEXT DEFAULT 'FILIAL',
+            pode_exportar INTEGER DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_grupos_perm_sync ON grupos_acesso_permissoes(x_sync_status, updated_at);
+        CREATE INDEX IF NOT EXISTS idx_grupos_perm_grupo ON grupos_acesso_permissoes(grupo_id);
         ",
     )?;
 
@@ -1426,7 +1591,12 @@ pub fn create_tables(conn: &Connection) -> Result<()> {
     migrate_filiais_nfce_config_columns(conn)?;
     migrate_filiais_nfse_config_columns(conn)?;
 
-    info!("Schema DDL executado com sucesso. Todas as 60 tabelas criadas e migradas.");
+    info!("Schema DDL executado com sucesso. Todas as 65 tabelas criadas e migradas.");
+
+    if let Err(e) = seed_admin_user(conn) {
+        tracing::error!("Erro ao seedar usuário admin: {}", e);
+    }
+
     Ok(())
 }
 
@@ -1664,6 +1834,72 @@ fn migrate_filiais_nfse_config_columns(conn: &Connection) -> Result<()> {
             let _ = conn.execute(&alter_sql, []);
         }
     }
+
+    Ok(())
+}
+
+fn seed_admin_user(conn: &Connection) -> Result<()> {
+    // Verifica se já existe algum funcionário
+    let count: i64 = conn.query_row("SELECT COUNT(*) FROM funcionarios", [], |row| row.get(0)).unwrap_or(0);
+    if count > 0 {
+        return Ok(());
+    }
+
+    info!("Seeding grupo de acesso e usuário admin padrão...");
+    let now = chrono::Utc::now().to_rfc3339();
+    let device_id = "seed-system";
+
+    // 1. Criar grupo_acesso admin
+    let grupo_id = "grupo-admin-001";
+    conn.execute(
+        "INSERT OR IGNORE INTO grupos_acesso (
+            id, device_id, created_at, updated_at, x_sync_status, x_version, is_deleted,
+            nome, descricao, is_sistema, ativo, percentual_max_desconto
+        ) VALUES (?1, ?2, ?3, ?3, 'pending', 1, 0, ?4, ?5, 1, 1, 100.0)",
+        rusqlite::params![grupo_id, device_id, now, "Administrador", "Acesso total ao sistema"],
+    )?;
+
+    let modulos = vec![
+        "Painel Executivo", "Clientes & Parceiros", "Catálogo de Produtos", "Caixa PDV",
+        "Vendas", "Pré-Venda & Balcão", "Compras & Fornecedores", "Entrada XML NF-e",
+        "Estoque & Saldos", "Financeiro", "Contas Bancárias", "DRE & Relatórios",
+        "Configurações", "Usuários & Permissões", "SPED & Fiscal", "Comissões & Metas",
+        "Auditoria & Logs"
+    ];
+
+    for modulo in modulos {
+        let perm_id = uuid::Uuid::new_v4().to_string();
+        conn.execute(
+            "INSERT OR IGNORE INTO grupos_acesso_permissoes (
+                id, device_id, created_at, updated_at, x_sync_status, x_version, is_deleted,
+                grupo_id, modulo, recurso, pode_visualizar, pode_criar, pode_editar, pode_excluir, pode_especial, escopo_dados, pode_exportar
+            ) VALUES (?1, ?2, ?3, ?3, 'pending', 1, 0, ?4, ?5, ?6, 1, 1, 1, 1, 1, 'TODOS', 1)",
+            rusqlite::params![perm_id, device_id, now, grupo_id, modulo, "*"],
+        )?;
+    }
+
+    // 2. Criar senha hash argon2
+    use argon2::{Argon2, PasswordHasher, password_hash::{SaltString, rand_core::OsRng}};
+    let salt = SaltString::generate(&mut OsRng);
+    let argon2 = Argon2::default();
+    let hash = argon2.hash_password(b"98683818", &salt)
+        .map_err(|e| rusqlite::Error::InvalidParameterName(e.to_string()))?.to_string();
+
+    // 3. Pegar a primeira empresa ou usar default
+    let empresa_id: String = conn.query_row("SELECT id FROM empresas LIMIT 1", [], |row| row.get(0)).unwrap_or_else(|_| "default".to_string());
+    
+    // 4. Criar funcionario admin
+    let func_id = uuid::Uuid::new_v4().to_string();
+    conn.execute(
+        "INSERT INTO funcionarios (
+            id, device_id, created_at, updated_at, x_sync_status, x_version, is_deleted,
+            codigo, nome, tipo_pessoa, tipo_funcionario, username, password_hash, grupo_acesso_id,
+            tem_acesso_sistema, status, empresa_id, desconto_maximo_permitido, acesso_todas_empresas
+        ) VALUES (?1, ?2, ?3, ?3, 'pending', 1, 0,
+            ?4, ?5, 'FISICA', 'USUARIO', ?6, ?7, ?8, 1, 'ATIVO', ?9, 100.0, 1
+        )",
+        rusqlite::params![func_id, device_id, now, "001", "Administrador Master", "admin", hash, grupo_id, empresa_id],
+    )?;
 
     Ok(())
 }

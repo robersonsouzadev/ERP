@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { PageHeader } from '../components/ui/PageHeader';
 import { Button } from '../components/ui/Button';
 import { StatusBadge } from '../components/ui/StatusBadge';
-import { Edit2, Plus, Power, PowerOff, CheckCircle2, X } from 'lucide-react';
+import { Edit2, Plus, Power, PowerOff, CheckCircle2, X, Trash2 } from 'lucide-react';
+import { funcionariosService, GrupoAcesso as GrupoAcessoType, GrupoAcessoPermissao } from '../lib/funcionarios';
 
 const MODULES = [
   'Painel Executivo',
@@ -33,15 +34,6 @@ type Actions = {
 
 type PermissionsMatrix = Record<ModuleName, Actions>;
 
-interface GrupoAcesso {
-  id: string;
-  nome: string;
-  descricao: string;
-  usuarios: number;
-  ativo: boolean;
-  permissoes: PermissionsMatrix;
-}
-
 const defaultMatrix = (): PermissionsMatrix => {
   const matrix: Partial<PermissionsMatrix> = {};
   MODULES.forEach(m => {
@@ -50,38 +42,21 @@ const defaultMatrix = (): PermissionsMatrix => {
   return matrix as PermissionsMatrix;
 };
 
-const adminMatrix = (): PermissionsMatrix => {
-  const matrix: Partial<PermissionsMatrix> = {};
-  MODULES.forEach(m => {
-    matrix[m] = { visualizar: true, criar: true, editar: true, excluir: true, especial: true };
-  });
-  return matrix as PermissionsMatrix;
-};
-
-const pdvMatrix = (): PermissionsMatrix => {
-  const matrix = defaultMatrix();
-  matrix['Caixa PDV'] = { visualizar: true, criar: true, editar: false, excluir: false, especial: false };
-  matrix['Vendas'] = { visualizar: true, criar: false, editar: false, excluir: false, especial: false };
-  matrix['Clientes & Parceiros'] = { visualizar: true, criar: false, editar: false, excluir: false, especial: false };
-  return matrix;
-};
+const INITIAL_GRUPOS: GrupoAcessoType[] = [
+  { id: '1', nome: 'Administrador', descricao: 'Acesso total ao sistema', is_sistema: 1, ativo: 1, percentual_max_desconto: 100, total_usuarios: 2 },
+  { id: '2', nome: 'Gerente', descricao: 'Acesso gerencial com restrições', is_sistema: 0, ativo: 1, percentual_max_desconto: 15, total_usuarios: 3 },
+];
 
 export const GruposAcessoPage: React.FC = () => {
-  const [grupos, setGrupos] = useState<GrupoAcesso[]>([
-    { id: '1', nome: 'Administrador', descricao: 'Acesso total ao sistema', usuarios: 2, ativo: true, permissoes: adminMatrix() },
-    { id: '2', nome: 'Gerente', descricao: 'Acesso gerencial com restrições financeiras', usuarios: 3, ativo: true, permissoes: defaultMatrix() },
-    { id: '3', nome: 'Operador PDV', descricao: 'Acesso restrito ao módulo de vendas e caixa', usuarios: 5, ativo: true, permissoes: pdvMatrix() },
-    { id: '4', nome: 'Financeiro', descricao: 'Acesso ao módulo financeiro, contas e relatórios', usuarios: 2, ativo: true, permissoes: defaultMatrix() },
-    { id: '5', nome: 'Estoquista', descricao: 'Acesso restrito ao módulo de estoque e produtos', usuarios: 3, ativo: true, permissoes: defaultMatrix() },
-  ]);
-
+  const [grupos, setGrupos] = useState<GrupoAcessoType[]>(INITIAL_GRUPOS);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingGrupo, setEditingGrupo] = useState<GrupoAcesso | null>(null);
+  const [editingGrupo, setEditingGrupo] = useState<GrupoAcessoType | null>(null);
 
   // Form State
   const [nome, setNome] = useState('');
   const [descricao, setDescricao] = useState('');
+  const [percentualMaxDesconto, setPercentualMaxDesconto] = useState<number>(0);
   const [ativo, setAtivo] = useState(true);
   const [permissoes, setPermissoes] = useState<PermissionsMatrix>(defaultMatrix());
 
@@ -90,17 +65,56 @@ export const GruposAcessoPage: React.FC = () => {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  const handleOpenModal = (g?: GrupoAcesso) => {
+  useEffect(() => {
+    const fetchGrupos = async () => {
+      try {
+        const data = await funcionariosService.listarGrupos();
+        if (data && data.length > 0) {
+          setGrupos(data);
+        }
+      } catch (e) {
+        console.error(e);
+        showToast("Erro ao carregar grupos, usando dados locais.");
+      }
+    };
+    fetchGrupos();
+  }, []);
+
+  const handleOpenModal = async (g?: GrupoAcessoType) => {
     if (g) {
       setEditingGrupo(g);
       setNome(g.nome);
-      setDescricao(g.descricao);
-      setAtivo(g.ativo);
-      setPermissoes(JSON.parse(JSON.stringify(g.permissoes))); // deep copy
+      setDescricao(g.descricao || '');
+      setPercentualMaxDesconto(g.percentual_max_desconto || 0);
+      setAtivo(g.ativo === 1);
+      
+      try {
+        const perms = await funcionariosService.listarPermissoesGrupo(g.id);
+        const matrix = defaultMatrix();
+        if (perms && perms.length > 0) {
+          perms.forEach(p => {
+            if (MODULES.includes(p.modulo as any)) {
+              matrix[p.modulo as ModuleName] = {
+                visualizar: p.pode_visualizar === 1,
+                criar: p.pode_criar === 1,
+                editar: p.pode_editar === 1,
+                excluir: p.pode_excluir === 1,
+                especial: p.pode_especial === 1,
+              };
+            }
+          });
+        }
+        setPermissoes(matrix);
+      } catch (e) {
+        console.error(e);
+        showToast('Erro ao carregar permissões do backend.');
+        setPermissoes(defaultMatrix()); // fallback
+      }
     } else {
       setEditingGrupo(null);
       setNome('');
       setDescricao('');
+      setPercentualMaxDesconto(0);
       setAtivo(true);
       setPermissoes(defaultMatrix());
     }
@@ -112,29 +126,90 @@ export const GruposAcessoPage: React.FC = () => {
     setEditingGrupo(null);
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const matrixToPermissoes = (groupId: string, matrix: PermissionsMatrix): GrupoAcessoPermissao[] => {
+    return MODULES.map(m => ({
+      id: '',
+      grupo_id: groupId,
+      modulo: m,
+      recurso: m,
+      pode_visualizar: matrix[m].visualizar ? 1 : 0,
+      pode_criar: matrix[m].criar ? 1 : 0,
+      pode_editar: matrix[m].editar ? 1 : 0,
+      pode_excluir: matrix[m].excluir ? 1 : 0,
+      pode_especial: matrix[m].especial ? 1 : 0,
+      escopo_dados: 'GLOBAL',
+      pode_exportar: 0
+    }));
+  };
+
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (editingGrupo) {
-      setGrupos(grupos.map(g => g.id === editingGrupo.id ? { ...g, nome, descricao, ativo, permissoes } : g));
-      showToast('Grupo de acesso atualizado com sucesso!');
-    } else {
-      const newGrupo: GrupoAcesso = {
-        id: String(Date.now()),
-        nome,
-        descricao,
-        usuarios: 0,
-        ativo,
-        permissoes,
-      };
-      setGrupos([...grupos, newGrupo]);
-      showToast('Grupo de acesso criado com sucesso!');
+    const grupoData: GrupoAcessoType = {
+      id: editingGrupo ? editingGrupo.id : '',
+      nome,
+      descricao,
+      is_sistema: editingGrupo ? editingGrupo.is_sistema : 0,
+      ativo: ativo ? 1 : 0,
+      percentual_max_desconto: percentualMaxDesconto,
+      total_usuarios: editingGrupo ? editingGrupo.total_usuarios : 0
+    };
+    const perms = matrixToPermissoes(grupoData.id, permissoes);
+    
+    try {
+      const saved = await funcionariosService.salvarGrupo(grupoData, perms);
+      setGrupos(prev => {
+        const exists = prev.find(g => g.id === saved.id);
+        if (exists) return prev.map(g => g.id === saved.id ? saved : g);
+        return [...prev, saved];
+      });
+      showToast('Grupo de acesso salvo com sucesso!');
+    } catch (e) {
+      console.error(e);
+      showToast('Erro ao salvar no backend. Alterando localmente.');
+      // Local fallback
+      const id = editingGrupo ? editingGrupo.id : String(Date.now());
+      const newG = { ...grupoData, id };
+      if (editingGrupo) {
+        setGrupos(prev => prev.map(g => g.id === id ? newG : g));
+      } else {
+        setGrupos(prev => [...prev, newG]);
+      }
     }
     handleCloseModal();
   };
 
-  const handleToggleStatus = (id: string) => {
-    setGrupos(grupos.map(g => g.id === id ? { ...g, ativo: !g.ativo } : g));
-    showToast('Status do grupo alterado com sucesso!');
+  const handleToggleStatus = async (id: string) => {
+    const g = grupos.find(x => x.id === id);
+    if (!g) return;
+    const novoAtivo = g.ativo === 1 ? 0 : 1;
+    const updatedG = { ...g, ativo: novoAtivo };
+    
+    try {
+      let perms: GrupoAcessoPermissao[] = [];
+      try {
+        perms = await funcionariosService.listarPermissoesGrupo(id);
+      } catch (err) {}
+      await funcionariosService.salvarGrupo(updatedG, perms);
+      setGrupos(prev => prev.map(x => x.id === id ? updatedG : x));
+      showToast('Status do grupo alterado com sucesso!');
+    } catch (e) {
+      console.error(e);
+      showToast('Erro no backend, alterado localmente!');
+      setGrupos(prev => prev.map(x => x.id === id ? updatedG : x));
+    }
+  };
+
+  const handleExcluir = async (id: string) => {
+    if (!confirm('Deseja realmente excluir este grupo?')) return;
+    try {
+      await funcionariosService.excluirGrupo(id);
+      setGrupos(prev => prev.filter(g => g.id !== id));
+      showToast('Grupo excluído com sucesso!');
+    } catch (e) {
+      console.error(e);
+      showToast('Erro ao excluir no backend, excluído localmente.');
+      setGrupos(prev => prev.filter(g => g.id !== id));
+    }
   };
 
   const handlePermissionChange = (module: ModuleName, action: keyof Actions, value: boolean) => {
@@ -179,9 +254,10 @@ export const GruposAcessoPage: React.FC = () => {
               <tr>
                 <th>Nome do Grupo</th>
                 <th>Descrição</th>
+                <th style={{ textAlign: 'center' }}>Desc. Máx %</th>
                 <th style={{ textAlign: 'center' }}>Nº Usuários</th>
                 <th>Status</th>
-                <th style={{ width: '100px', textAlign: 'center' }}>Ações</th>
+                <th style={{ width: '120px', textAlign: 'center' }}>Ações</th>
               </tr>
             </thead>
             <tbody>
@@ -189,17 +265,21 @@ export const GruposAcessoPage: React.FC = () => {
                 <tr key={g.id}>
                   <td style={{ fontWeight: 500 }}>{g.nome}</td>
                   <td style={{ color: 'var(--text-secondary)' }}>{g.descricao}</td>
-                  <td style={{ textAlign: 'center' }}>{g.usuarios}</td>
+                  <td style={{ textAlign: 'center' }}>{g.percentual_max_desconto}%</td>
+                  <td style={{ textAlign: 'center' }}>{g.total_usuarios}</td>
                   <td>
-                    <StatusBadge status={g.ativo ? 'success' : 'muted'} label={g.ativo ? 'Ativo' : 'Inativo'} />
+                    <StatusBadge status={g.ativo === 1 ? 'success' : 'muted'} label={g.ativo === 1 ? 'Ativo' : 'Inativo'} />
                   </td>
                   <td style={{ textAlign: 'center' }}>
                     <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
                       <Button variant="ghost" onClick={() => handleOpenModal(g)} title="Editar">
                         <Edit2 size={14} />
                       </Button>
-                      <Button variant="ghost" onClick={() => handleToggleStatus(g.id)} title={g.ativo ? 'Desativar' : 'Ativar'}>
-                        {g.ativo ? <PowerOff size={14} color="var(--action-danger)" /> : <Power size={14} color="var(--status-success)" />}
+                      <Button variant="ghost" onClick={() => handleToggleStatus(g.id)} title={g.ativo === 1 ? 'Desativar' : 'Ativar'}>
+                        {g.ativo === 1 ? <PowerOff size={14} color="var(--action-danger)" /> : <Power size={14} color="var(--status-success)" />}
+                      </Button>
+                      <Button variant="ghost" onClick={() => handleExcluir(g.id)} title="Excluir">
+                        <Trash2 size={14} color="var(--action-danger)" />
                       </Button>
                     </div>
                   </td>
@@ -207,7 +287,7 @@ export const GruposAcessoPage: React.FC = () => {
               ))}
               {grupos.length === 0 && (
                 <tr>
-                  <td colSpan={5} style={{ textAlign: 'center', padding: '24px' }}>
+                  <td colSpan={6} style={{ textAlign: 'center', padding: '24px' }}>
                     Nenhum grupo cadastrado.
                   </td>
                 </tr>
@@ -253,7 +333,7 @@ export const GruposAcessoPage: React.FC = () => {
                 <fieldset style={{ padding: '16px', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', margin: 0 }}>
                   <legend style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', padding: '0 4px' }}>Dados do Grupo</legend>
                   
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '12px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr 1fr', gap: '12px' }}>
                     <div>
                       <label className="coliseu-label">Nome do Grupo *</label>
                       <input 
@@ -272,6 +352,17 @@ export const GruposAcessoPage: React.FC = () => {
                         className="coliseu-input" 
                         value={descricao} 
                         onChange={e => setDescricao(e.target.value)} 
+                        style={{ height: '38px', width: '100%' }}
+                      />
+                    </div>
+                    <div>
+                      <label className="coliseu-label">Desconto Máximo %</label>
+                      <input 
+                        type="number" 
+                        step="0.01" 
+                        className="coliseu-input" 
+                        value={percentualMaxDesconto} 
+                        onChange={e => setPercentualMaxDesconto(Number(e.target.value))} 
                         style={{ height: '38px', width: '100%' }}
                       />
                     </div>
