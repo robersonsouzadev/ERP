@@ -1915,6 +1915,218 @@ pub async fn tecnospeed_listar_certificados_cmd(
     tecnospeed::componente_client::listar_certificados_instalados(&sh, &token)
 }
 
+// ==========================================
+// TECNOSPEED NFC-E (MOD. 65) - COMANDOS TAURI
+// ==========================================
+
+#[tauri::command]
+pub async fn tecnospeed_status_sefaz_nfce_cmd(
+    cnpj: Option<String>,
+    uf: Option<String>,
+    ambiente: Option<u32>,
+    cert_name: Option<String>,
+    caminho_pfx: Option<String>,
+    senha_cert: Option<String>,
+    cnpj_sh: Option<String>,
+    token_sh: Option<String>,
+    id_token: Option<String>,
+    token_csc: Option<String>,
+) -> Result<sefaz_client::SefazResponse, String> {
+    let mut cfg = tecnospeed::componente_nfce_client::TecnoSpeedNfceComponenteConfig::default();
+    
+    if let Some(sh) = cnpj_sh { if !sh.trim().is_empty() { cfg.cnpj_software_house = sh; } }
+    if let Some(tk) = token_sh { if !tk.trim().is_empty() { cfg.token_software_house = tk; } }
+    if let Some(c) = cnpj { if !c.trim().is_empty() { cfg.cnpj_emitente = c; } }
+    if let Some(u) = uf { if !u.trim().is_empty() { cfg.uf = u; } }
+    if let Some(a) = ambiente { cfg.ambiente = a as i32; }
+    if let Some(cn) = cert_name { cfg.nome_certificado = cn; }
+    if let Some(pfx) = caminho_pfx { cfg.caminho_certificado_pfx = pfx; }
+    if let Some(sc) = senha_cert { cfg.senha_certificado = sc; }
+    if let Some(it) = id_token { if !it.trim().is_empty() { cfg.id_token_nfce = it; } }
+    if let Some(tc) = token_csc { if !tc.trim().is_empty() { cfg.token_nfce = tc; } }
+
+    let res = tecnospeed::componente_nfce_client::consultar_status_sefaz_nfce(&cfg)?;
+    let agora = chrono::Utc::now().to_rfc3339();
+
+    Ok(sefaz_client::SefazResponse {
+        c_stat: 107,
+        x_motivo: format!("TecnoSpeed Componente NFC-e SEFAZ: {}", res.trim()),
+        n_prot: None,
+        dh_rec_bto: Some(agora),
+        ch_nfe: None,
+        xml_retorno: res,
+        sucesso: true,
+    })
+}
+
+#[tauri::command]
+pub async fn tecnospeed_transmitir_nfce_tx2_cmd(
+    dados: tecnospeed::tx2_builder::TecnoSpeedNfeDados,
+    uf: Option<String>,
+    ambiente: Option<u32>,
+    cert_name: Option<String>,
+    caminho_pfx: Option<String>,
+    senha_cert: Option<String>,
+    cnpj_sh: Option<String>,
+    token_sh: Option<String>,
+    id_token: Option<String>,
+    token_csc: Option<String>,
+    sincrono: Option<bool>,
+) -> Result<sefaz_client::SefazResponse, String> {
+    let mut cfg = tecnospeed::componente_nfce_client::TecnoSpeedNfceComponenteConfig::default();
+    
+    if let Some(sh) = cnpj_sh { if !sh.trim().is_empty() { cfg.cnpj_software_house = sh; } }
+    if let Some(tk) = token_sh { if !tk.trim().is_empty() { cfg.token_software_house = tk; } }
+    if let Some(u) = uf { if !u.trim().is_empty() { cfg.uf = u; } }
+    if let Some(a) = ambiente { cfg.ambiente = a as i32; }
+    if let Some(cn) = cert_name { cfg.nome_certificado = cn; }
+    if let Some(pfx) = caminho_pfx { cfg.caminho_certificado_pfx = pfx; }
+    if let Some(sc) = senha_cert { cfg.senha_certificado = sc; }
+    if let Some(it) = id_token { if !it.trim().is_empty() { cfg.id_token_nfce = it; } }
+    if let Some(tc) = token_csc { if !tc.trim().is_empty() { cfg.token_nfce = tc; } }
+    cfg.cnpj_emitente = dados.emitente_cnpj.clone();
+
+    let tx2_str = tecnospeed::tx2_builder::gerar_arquivo_tx2(&dados);
+    let num_lote = format!("{}", dados.numero);
+    let is_sincrono = sincrono.unwrap_or(true);
+
+    let res = tecnospeed::componente_nfce_client::transmitir_tx2_nfce(&cfg, &num_lote, &tx2_str, is_sincrono)?;
+
+    let mut c_stat = 0;
+    let mut x_motivo = String::new();
+    let mut n_prot = None;
+    let mut ch_nfe = None;
+
+    if let Some(pos) = res.find("<cStat>") {
+        if let Some(end) = res[pos..].find("</cStat>") {
+            c_stat = res[pos + 7..pos + end].trim().parse().unwrap_or(0);
+        }
+    }
+    if let Some(pos) = res.find("<xMotivo>") {
+        if let Some(end) = res[pos..].find("</xMotivo>") {
+            x_motivo = res[pos + 9..pos + end].trim().to_string();
+        }
+    }
+    if let Some(pos) = res.find("<nProt>") {
+        if let Some(end) = res[pos..].find("</nProt>") {
+            n_prot = Some(res[pos + 7..pos + end].trim().to_string());
+        }
+    }
+    if let Some(pos) = res.find("<chNFe>") {
+        if let Some(end) = res[pos..].find("</chNFe>") {
+            ch_nfe = Some(res[pos + 7..pos + end].trim().to_string());
+        }
+    }
+
+    let sucesso = c_stat == 100 || c_stat == 104 || c_stat == 150;
+    let agora = chrono::Utc::now().to_rfc3339();
+
+    Ok(sefaz_client::SefazResponse {
+        c_stat,
+        x_motivo: if x_motivo.is_empty() { format!("Resposta TecnoSpeed NFC-e: {}", res) } else { x_motivo },
+        n_prot,
+        dh_rec_bto: Some(agora),
+        ch_nfe,
+        xml_retorno: res,
+        sucesso,
+    })
+}
+
+#[tauri::command]
+pub async fn tecnospeed_consultar_nfce_cmd(
+    chave: String,
+    cnpj: Option<String>,
+    uf: Option<String>,
+    ambiente: Option<u32>,
+    cnpj_sh: Option<String>,
+    token_sh: Option<String>,
+) -> Result<String, String> {
+    let mut cfg = tecnospeed::componente_nfce_client::TecnoSpeedNfceComponenteConfig::default();
+    if let Some(sh) = cnpj_sh { if !sh.trim().is_empty() { cfg.cnpj_software_house = sh; } }
+    if let Some(tk) = token_sh { if !tk.trim().is_empty() { cfg.token_software_house = tk; } }
+    if let Some(c) = cnpj { if !c.trim().is_empty() { cfg.cnpj_emitente = c; } }
+    if let Some(u) = uf { if !u.trim().is_empty() { cfg.uf = u; } }
+    if let Some(a) = ambiente { cfg.ambiente = a as i32; }
+
+    tecnospeed::componente_nfce_client::consultar_nfce(&cfg, &chave)
+}
+
+#[tauri::command]
+pub async fn tecnospeed_cancelar_nfce_cmd(
+    chave: String,
+    protocolo: String,
+    justificativa: String,
+    cnpj: Option<String>,
+    uf: Option<String>,
+    ambiente: Option<u32>,
+    cnpj_sh: Option<String>,
+    token_sh: Option<String>,
+) -> Result<String, String> {
+    let mut cfg = tecnospeed::componente_nfce_client::TecnoSpeedNfceComponenteConfig::default();
+    if let Some(sh) = cnpj_sh { if !sh.trim().is_empty() { cfg.cnpj_software_house = sh; } }
+    if let Some(tk) = token_sh { if !tk.trim().is_empty() { cfg.token_software_house = tk; } }
+    if let Some(c) = cnpj { if !c.trim().is_empty() { cfg.cnpj_emitente = c; } }
+    if let Some(u) = uf { if !u.trim().is_empty() { cfg.uf = u; } }
+    if let Some(a) = ambiente { cfg.ambiente = a as i32; }
+
+    tecnospeed::componente_nfce_client::cancelar_nfce(&cfg, &chave, &protocolo, &justificativa)
+}
+
+#[tauri::command]
+pub async fn tecnospeed_inutilizar_nfce_cmd(
+    cnpj: String,
+    ano: u32,
+    serie: u32,
+    num_ini: u32,
+    num_fim: u32,
+    justificativa: String,
+    uf: Option<String>,
+    ambiente: Option<u32>,
+    cnpj_sh: Option<String>,
+    token_sh: Option<String>,
+) -> Result<String, String> {
+    let mut cfg = tecnospeed::componente_nfce_client::TecnoSpeedNfceComponenteConfig::default();
+    if let Some(sh) = cnpj_sh { if !sh.trim().is_empty() { cfg.cnpj_software_house = sh; } }
+    if let Some(tk) = token_sh { if !tk.trim().is_empty() { cfg.token_software_house = tk; } }
+    cfg.cnpj_emitente = cnpj;
+    if let Some(u) = uf { if !u.trim().is_empty() { cfg.uf = u; } }
+    if let Some(a) = ambiente { cfg.ambiente = a as i32; }
+
+    tecnospeed::componente_nfce_client::inutilizar_nfce(&cfg, ano, serie, num_ini, num_fim, &justificativa)
+}
+
+#[tauri::command]
+pub async fn tecnospeed_imprimir_danfce_cmd(
+    xml_ou_chave: String,
+    impressora: Option<String>,
+    modelo_danfce: Option<String>,
+) -> Result<String, String> {
+    let mut cfg = tecnospeed::componente_nfce_client::TecnoSpeedNfceComponenteConfig::default();
+    if let Some(m) = modelo_danfce { if !m.trim().is_empty() { cfg.modelo_danfce = m; } }
+
+    tecnospeed::componente_nfce_client::imprimir_danfce(&cfg, &xml_ou_chave, impressora.as_deref())
+}
+
+#[tauri::command]
+pub async fn tecnospeed_exportar_danfce_pdf_cmd(
+    xml_ou_chave: String,
+    caminho_pdf: String,
+    modelo_danfce: Option<String>,
+) -> Result<String, String> {
+    let mut cfg = tecnospeed::componente_nfce_client::TecnoSpeedNfceComponenteConfig::default();
+    if let Some(m) = modelo_danfce { if !m.trim().is_empty() { cfg.modelo_danfce = m; } }
+
+    tecnospeed::componente_nfce_client::exportar_danfce_pdf(&cfg, &xml_ou_chave, &caminho_pdf)
+}
+
+#[tauri::command]
+pub async fn tecnospeed_editar_modelo_danfce_cmd(
+    modelo_danfce: Option<String>,
+) -> Result<String, String> {
+    let cfg = tecnospeed::componente_nfce_client::TecnoSpeedNfceComponenteConfig::default();
+    tecnospeed::componente_nfce_client::editar_modelo_danfce(&cfg, modelo_danfce.as_deref())
+}
+
 
 #[cfg(test)]
 mod tests {

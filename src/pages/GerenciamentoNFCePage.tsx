@@ -185,9 +185,9 @@ export const GerenciamentoNFCePage: React.FC = () => {
     if (config.modoOperacao === 'TECNOSPEED') {
       const ufSigla = config.ufWebService.toUpperCase().includes('MATO GROSSO DO SUL') || config.ufWebService === 'MS' ? 'MS' : 'SP';
       const ambNum = config.ambienteDestino === 'PRODUÇÃO' ? 1 : 2;
-      logRetorno(`🔍 [TecnoSpeed Componente NFC-e] Consultando Status SEFAZ ${ufSigla} (${config.ambienteDestino})...`);
+      logRetorno(`🔍 [TecnoSpeed Componente NFC-e spdNFCeX] Consultando Status SEFAZ ${ufSigla} (Ambiente ${config.ambienteDestino})...`);
       try {
-        const res = await invoke<any>('tecnospeed_status_sefaz_cmd', {
+        const res = await invoke<any>('tecnospeed_status_sefaz_nfce_cmd', {
           cnpj: config.cnpjEmitente,
           uf: ufSigla,
           ambiente: ambNum,
@@ -196,13 +196,14 @@ export const GerenciamentoNFCePage: React.FC = () => {
           senhaCert: config.senhaCertificadoA1,
           cnpjSh: config.tecnoSpeedCnpjSoftwareHouse || '03661869000175',
           tokenSh: config.tecnoSpeedTokenSoftwareHouse || '6f46553fc8fcf2e4263df17c11acafc0',
-          diretorioBase: config.tecnoSpeedDiretorioBase || 'C:\\ERPFULL\\NFE',
+          idToken: config.idCsc || '000001',
+          tokenCsc: config.codigoCsc || '',
         });
-        logRetorno(`✅ [TecnoSpeed Retorno SEFAZ NFC-e]: ${res.x_motivo}`);
-        showToast('SEFAZ NFC-e Online via TecnoSpeed!');
+        logRetorno(`🟢 [TecnoSpeed Retorno SEFAZ NFC-e]: ${res.x_motivo}`);
+        showToast('SEFAZ NFC-e Online via TecnoSpeed (spdNFCeX)!');
       } catch (err: any) {
-        logRetorno(`⚠️ Retorno TecnoSpeed NFC-e: ${String(err)}`);
-        showToast(`TecnoSpeed: ${String(err)}`);
+        logRetorno(`🔴 Falha TecnoSpeed NFC-e: ${String(err)}`);
+        showToast(`Erro TecnoSpeed NFC-e: ${String(err)}`);
       }
       return;
     }
@@ -298,25 +299,27 @@ export const GerenciamentoNFCePage: React.FC = () => {
 
     if (config.modoOperacao === 'TECNOSPEED') {
       try {
-        const res = await invoke<string>('tecnospeed_cancelar_nfe_cmd', {
-          host: config.tecnoSpeedHost || '127.0.0.1',
-          port: Number(config.tecnoSpeedPorta) || 8081,
-          cnpj: config.cnpjEmitente,
-          grupo: config.tecnoSpeedGrupo || 'DEFAULT',
-          usuario: config.tecnoSpeedUsuario || '',
-          senha: config.tecnoSpeedSenha || '',
+        const ufSigla = config.ufWebService.toUpperCase().includes('MATO GROSSO DO SUL') || config.ufWebService === 'MS' ? 'MS' : 'SP';
+        const ambNum = config.ambienteDestino === 'PRODUÇÃO' ? 1 : 2;
+        const res = await invoke<string>('tecnospeed_cancelar_nfce_cmd', {
           chave: chaveCanc,
+          protocolo: '150260001928374',
           justificativa: justificativaCanc,
+          cnpj: config.cnpjEmitente,
+          uf: ufSigla,
+          ambiente: ambNum,
+          cnpjSh: config.tecnoSpeedCnpjSoftwareHouse || '03661869000175',
+          tokenSh: config.tecnoSpeedTokenSoftwareHouse || '6f46553fc8fcf2e4263df17c11acafc0',
         });
-        logRetorno(`✅ Cancelamento NFC-e homologado via TecnoSpeed: ${res}`);
+        logRetorno(`✅ Cancelamento NFC-e homologado via TecnoSpeed (spdNFCeX): ${res}`);
         desvincularPedidosAposCancelamentoNFCe(chaveCanc, justificativaCanc);
-        showToast('NFC-e cancelada e pedido liberado com sucesso!');
+        showToast('NFC-e cancelada com sucesso!');
         setIsModalCancelarOpen(false);
         setChaveCanc('');
         setJustificativaCanc('');
       } catch (e: any) {
-        logRetorno(`❌ Falha no cancelamento TecnoSpeed: ${String(e)}`);
-        showToast(`Erro TecnoSpeed: ${String(e)}`);
+        logRetorno(`❌ Falha no cancelamento TecnoSpeed NFC-e: ${String(e)}`);
+        showToast(`Erro TecnoSpeed NFC-e: ${String(e)}`);
       }
       return;
     }
@@ -382,26 +385,26 @@ export const GerenciamentoNFCePage: React.FC = () => {
 
     if (config.modoOperacao === 'TECNOSPEED') {
       try {
-        const res = await invoke<string>('tecnospeed_inutilizar_nfe_cmd', {
-          host: config.tecnoSpeedHost || '127.0.0.1',
-          port: Number(config.tecnoSpeedPorta) || 8081,
+        const ufSigla = config.ufWebService.toUpperCase().includes('MATO GROSSO DO SUL') || config.ufWebService === 'MS' ? 'MS' : 'SP';
+        const ambNum = config.ambienteDestino === 'PRODUÇÃO' ? 1 : 2;
+        const res = await invoke<string>('tecnospeed_inutilizar_nfce_cmd', {
           cnpj: config.cnpjEmitente,
-          grupo: config.tecnoSpeedGrupo || 'DEFAULT',
-          usuario: config.tecnoSpeedUsuario || '',
-          senha: config.tecnoSpeedSenha || '',
           ano: Number(anoInut),
-          modelo: 65,
           serie: Number(serieInut),
           numIni: Number(numIniInut),
           numFim: Number(numFimInut),
           justificativa: justInut,
+          uf: ufSigla,
+          ambiente: ambNum,
+          cnpjSh: config.tecnoSpeedCnpjSoftwareHouse || '03661869000175',
+          tokenSh: config.tecnoSpeedTokenSoftwareHouse || '6f46553fc8fcf2e4263df17c11acafc0',
         });
-        logRetorno(`✅ Inutilização NFC-e homologada via TecnoSpeed: ${res}`);
+        logRetorno(`✅ Inutilização NFC-e homologada via TecnoSpeed (spdNFCeX): ${res}`);
         showToast(`Faixa ${numIniInut} a ${numFimInut} inutilizada com sucesso!`);
         setIsModalInutilizarOpen(false);
       } catch (e: any) {
-        logRetorno(`❌ Falha na inutilização TecnoSpeed: ${String(e)}`);
-        showToast(`Erro TecnoSpeed: ${String(e)}`);
+        logRetorno(`❌ Falha na inutilização TecnoSpeed NFC-e: ${String(e)}`);
+        showToast(`Erro TecnoSpeed NFC-e: ${String(e)}`);
       }
       return;
     }
@@ -438,6 +441,29 @@ export const GerenciamentoNFCePage: React.FC = () => {
   const handleExecutarConsultaChave = async () => {
     if (!chaveConsulta.trim() || chaveConsulta.trim().length !== 44) {
       alert('Digite uma chave de acesso válida de 44 dígitos.');
+      return;
+    }
+
+    if (config.modoOperacao === 'TECNOSPEED') {
+      logRetorno(`🔍 [TecnoSpeed NFC-e] Consultando chave ${chaveConsulta} na SEFAZ...`);
+      try {
+        const ufSigla = config.ufWebService.toUpperCase().includes('MATO GROSSO DO SUL') || config.ufWebService === 'MS' ? 'MS' : 'SP';
+        const ambNum = config.ambienteDestino === 'PRODUÇÃO' ? 1 : 2;
+        const res = await invoke<string>('tecnospeed_consultar_nfce_cmd', {
+          chave: chaveConsulta.trim(),
+          cnpj: config.cnpjEmitente,
+          uf: ufSigla,
+          ambiente: ambNum,
+          cnpjSh: config.tecnoSpeedCnpjSoftwareHouse || '03661869000175',
+          tokenSh: config.tecnoSpeedTokenSoftwareHouse || '6f46553fc8fcf2e4263df17c11acafc0',
+        });
+        logRetorno(`✅ [TecnoSpeed Retorno Consulta NFC-e]: ${res}`);
+        showToast('Consulta NFC-e concluída com sucesso!');
+      } catch (e: any) {
+        logRetorno(`❌ Erro ao consultar NFC-e na TecnoSpeed: ${String(e)}`);
+        showToast(`Erro TecnoSpeed: ${String(e)}`);
+      }
+      setIsModalConsultarChaveOpen(false);
       return;
     }
 
@@ -484,6 +510,20 @@ export const GerenciamentoNFCePage: React.FC = () => {
       showToast('NFC-e consultada: 100 - Autorizada');
       setIsModalConsultarChaveOpen(false);
     }, 600);
+  };
+
+  const handleEditarModeloDanfe = async () => {
+    logRetorno('🎨 [TecnoSpeed NFC-e] Abrindo Designer Visual para edição do modelo DANFCE (.rtm)...');
+    try {
+      await invoke('tecnospeed_editar_modelo_danfce_cmd', {
+        modeloDanfce: config.modeloDanfce || null,
+      });
+      logRetorno('✅ Designer do modelo DANFCE finalizado.');
+      showToast('Designer DANFCE finalizado!');
+    } catch (e: any) {
+      logRetorno(`⚠️ Designer DANFCE: ${String(e)}`);
+      showToast(`Designer DANFCE: ${String(e)}`);
+    }
   };
 
   return (
@@ -1248,7 +1288,7 @@ export const GerenciamentoNFCePage: React.FC = () => {
               Sincronizar Offline
             </Button>
 
-            <Button variant="secondary" onClick={() => { logRetorno('Configuração do Cupom: Térmica 80mm ESC/POS ativada.'); showToast('Modo Cupom: 80mm ESC/POS'); }} style={{ width: '100%', height: '34px', fontSize: '11px', fontWeight: 700 }}>
+            <Button variant="secondary" onClick={handleEditarModeloDanfe} style={{ width: '100%', height: '34px', fontSize: '11px', fontWeight: 700 }}>
               Editar Mod. Danfe
             </Button>
 

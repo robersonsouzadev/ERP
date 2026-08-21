@@ -230,6 +230,16 @@ pub fn run() {
             commands::fiscal::tecnospeed_carta_correcao_cmd,
             commands::fiscal::tecnospeed_imprimir_danfe_pdf_cmd,
             commands::fiscal::tecnospeed_listar_certificados_cmd,
+
+            // TecnoSpeed NFC-e (Mod. 65)
+            commands::fiscal::tecnospeed_status_sefaz_nfce_cmd,
+            commands::fiscal::tecnospeed_transmitir_nfce_tx2_cmd,
+            commands::fiscal::tecnospeed_consultar_nfce_cmd,
+            commands::fiscal::tecnospeed_cancelar_nfce_cmd,
+            commands::fiscal::tecnospeed_inutilizar_nfce_cmd,
+            commands::fiscal::tecnospeed_imprimir_danfce_cmd,
+            commands::fiscal::tecnospeed_exportar_danfce_pdf_cmd,
+            commands::fiscal::tecnospeed_editar_modelo_danfce_cmd,
         ])
         .run(tauri::generate_context!())
         .expect("Erro ao executar aplicação Tauri");

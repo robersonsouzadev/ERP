@@ -42,6 +42,7 @@ export interface NfceConfiguracaoCompleta {
   idCsc: string; // Ex: '000001'
   codigoCsc: string; // Token CSC alfanumérico fornecido pela SEFAZ
   tipoImpressaoDanfe: TipoImpressaoDanfeNfce;
+  modeloDanfce?: string;
   cortarPapelAutomatico: boolean;
   formaEmissao: FormaEmissaoNfce;
   caminhoLogotipo: string;
@@ -99,6 +100,7 @@ export const CONFIG_NFCE_PADRAO: NfceConfiguracaoCompleta = {
   idCsc: '000001',
   codigoCsc: '1A2B3C4D5E6F7G8H9I0J1K2L3M4N5O6P',
   tipoImpressaoDanfe: 'BOBINA_80MM',
+  modeloDanfce: 'C:\\ERPFULL\\NFE\\NFCe\\Templates\\Danfce.rtm',
   cortarPapelAutomatico: true,
   formaEmissao: 'NORMAL',
   caminhoLogotipo: 'C:\\ERPFULL\\NFCE\\logo_cupom.jpg',
