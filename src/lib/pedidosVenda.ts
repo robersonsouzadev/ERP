@@ -564,6 +564,31 @@ export function podeEmitirAcobertamento(pedido: PedidoVendaItem): boolean {
   return check.acaoRecomendada === 'ACOBERTAMENTO';
 }
 
+export function podeFaturarPedidoNFCe(pedido: PedidoVendaItem): {
+  permitido: boolean;
+  motivo?: string;
+  acaoRecomendada: 'EMISSAO_NORMAL' | 'BLOQUEADO';
+} {
+  if (pedido.statusFiscalNfce === 'AUTORIZADA' || (pedido.chaveNFCeEmitida && pedido.statusFiscalNfce !== 'CANCELADA')) {
+    return {
+      permitido: false,
+      motivo: `Este pedido já possui a NFC-e Nº ${pedido.numeroNFCe || 'Autorizada'} vinculada.`,
+      acaoRecomendada: 'BLOQUEADO',
+    };
+  }
+  if (pedido.statusFiscalNfe === 'AUTORIZADA' && !pedido.chaveNFCeEmitida) {
+    return {
+      permitido: false,
+      motivo: `Este pedido já foi faturado como NF-e (Mod. 55) Nº ${pedido.numeroNFe}. Não é permitido emitir NFC-e após emissão de NF-e.`,
+      acaoRecomendada: 'BLOQUEADO',
+    };
+  }
+  return {
+    permitido: true,
+    acaoRecomendada: 'EMISSAO_NORMAL',
+  };
+}
+
 export function atualizarStatusFiscalPedido(
   pedidoId: string,
   updates: Partial<PedidoVendaItem>

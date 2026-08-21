@@ -21,6 +21,7 @@ import {
   Layers,
   Sparkles,
   ShoppingBag,
+  Receipt,
 } from 'lucide-react';
 import {
   PedidoVendaItem,
@@ -35,6 +36,7 @@ import {
 import { getNaturezasAtivasParaVenda } from '../../lib/naturezasOperacao';
 import { ModalBuscaClientes, ClienteItemBusca } from './ModalBuscaClientes';
 import { ModalFaturamentoNFe } from './ModalFaturamentoNFe';
+import { ModalFaturamentoNFCe } from './ModalFaturamentoNFCe';
 
 interface ModalEmissaoPedidoVendaProps {
   isOpen: boolean;
@@ -95,16 +97,17 @@ export const ModalEmissaoPedidoVenda: React.FC<ModalEmissaoPedidoVendaProps> = (
   // Modais Secundários
   const [isModalBuscaClientesOpen, setIsModalBuscaClientesOpen] = useState(false);
   const [isModalFaturamentoOpen, setIsModalFaturamentoOpen] = useState(false);
+  const [isModalFaturamentoNFCeOpen, setIsModalFaturamentoNFCeOpen] = useState(false);
 
   // Refs de Navegação por Teclado
   const buscaInputRef = useRef<HTMLInputElement>(null);
   const qtdInputRef = useRef<HTMLInputElement>(null);
   const descontoInputRef = useRef<HTMLInputElement>(null);
 
-  // Atalhos de Teclado (F2, F3, F6, F7, F8, F9)
+  // Atalhos de Teclado (F2, F3, F4, F6, F7, F8, F9)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (isModalBuscaClientesOpen || isModalFaturamentoOpen) return;
+      if (isModalBuscaClientesOpen || isModalFaturamentoOpen || isModalFaturamentoNFCeOpen) return;
 
       if (e.key === 'F8') {
         e.preventDefault();
@@ -116,6 +119,9 @@ export const ModalEmissaoPedidoVenda: React.FC<ModalEmissaoPedidoVendaProps> = (
       } else if (e.key === 'F2') {
         e.preventDefault();
         handleAbrirFaturamentoNFe();
+      } else if (e.key === 'F4') {
+        e.preventDefault();
+        handleAbrirFaturamentoNFCe();
       } else if (e.key === 'F3') {
         e.preventDefault();
         handleLimparNovo();
@@ -383,6 +389,14 @@ export const ModalEmissaoPedidoVenda: React.FC<ModalEmissaoPedidoVendaProps> = (
       return;
     }
     setIsModalFaturamentoOpen(true);
+  };
+
+  const handleAbrirFaturamentoNFCe = () => {
+    if (itens.length === 0) {
+      alert('Adicione produtos no pedido antes de emitir a NFC-e.');
+      return;
+    }
+    setIsModalFaturamentoNFCeOpen(true);
   };
 
   const handleImprimir = () => {
@@ -982,8 +996,11 @@ export const ModalEmissaoPedidoVenda: React.FC<ModalEmissaoPedidoVendaProps> = (
             <Button variant="secondary" size="sm" type="button" onClick={handleImprimir} leftIcon={<Printer size={13} />} title="Imprimir Orçamento A4 (F6)">
               Imprimir A4 (F6)
             </Button>
-            <Button variant="secondary" size="sm" type="button" onClick={handleAbrirFaturamentoNFe} leftIcon={<FileCheck size={13} />} style={{ color: '#3b82f6' }} title="Faturar e Emitir NF-e Mod. 55 (F2)">
-              Nota Fiscal (F2)
+            <Button variant="secondary" size="sm" type="button" onClick={handleAbrirFaturamentoNFe} leftIcon={<FileCheck size={13} />} style={{ color: '#3b82f6', fontWeight: 700 }} title="Faturar e Emitir NF-e Mod. 55 (F2)">
+              Emitir NFE (F2)
+            </Button>
+            <Button variant="secondary" size="sm" type="button" onClick={handleAbrirFaturamentoNFCe} leftIcon={<Receipt size={13} />} style={{ color: '#10b981', fontWeight: 700 }} title="Emitir Cupom Fiscal NFC-e Mod. 65 (F4)">
+              Emitir NFCe (F4)
             </Button>
           </div>
 
@@ -1020,6 +1037,20 @@ export const ModalEmissaoPedidoVenda: React.FC<ModalEmissaoPedidoVendaProps> = (
         <ModalFaturamentoNFe
           isOpen={isModalFaturamentoOpen}
           onClose={() => setIsModalFaturamentoOpen(false)}
+          pedido={montarObjetoPedido('FATURADO')}
+          onFaturamentoConcluido={(faturado) => {
+            setStatus('FATURADO');
+            salvarPedidoVenda(faturado);
+            onSaveSuccess(faturado);
+          }}
+        />
+      )}
+
+      {/* Modal Especializado de Faturamento / Emissão de NFC-e Mod. 65 */}
+      {isModalFaturamentoNFCeOpen && (
+        <ModalFaturamentoNFCe
+          isOpen={isModalFaturamentoNFCeOpen}
+          onClose={() => setIsModalFaturamentoNFCeOpen(false)}
           pedido={montarObjetoPedido('FATURADO')}
           onFaturamentoConcluido={(faturado) => {
             setStatus('FATURADO');

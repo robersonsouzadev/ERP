@@ -17,8 +17,7 @@ import {
   TrendingUp,
   DollarSign,
   Barcode,
-  Clock,
-  ArrowRight,
+  Receipt,
 } from 'lucide-react';
 import {
   PedidoVendaItem,
@@ -27,11 +26,13 @@ import {
   faturarPedidoDireto,
   excluirPedidoVenda,
   podeFaturarPedidoNFe,
+  podeFaturarPedidoNFCe,
   podeEmitirAcobertamento,
 } from '../lib/pedidosVenda';
 import { ModalEmissaoPedidoVenda } from '../components/vendas/ModalEmissaoPedidoVenda';
 import { ModalImpressaoPedidoA4 } from '../components/vendas/ModalImpressaoPedidoA4';
 import { ModalFaturamentoNFe } from '../components/vendas/ModalFaturamentoNFe';
+import { ModalFaturamentoNFCe } from '../components/vendas/ModalFaturamentoNFCe';
 
 export const PedidosVendasPage: React.FC = () => {
   const [pedidos, setPedidos] = useState<PedidoVendaItem[]>(getPedidosVenda);
@@ -44,6 +45,7 @@ export const PedidosVendasPage: React.FC = () => {
   const [isModalEmissaoOpen, setIsModalEmissaoOpen] = useState(false);
   const [isModalImpressaoOpen, setIsModalImpressaoOpen] = useState(false);
   const [isModalFaturamentoOpen, setIsModalFaturamentoOpen] = useState(false);
+  const [isModalFaturamentoNFCeOpen, setIsModalFaturamentoNFCeOpen] = useState(false);
   const [pedidoSelecionado, setPedidoSelecionado] = useState<PedidoVendaItem | null>(null);
   const [pedidoFaturamento, setPedidoFaturamento] = useState<PedidoVendaItem | null>(null);
 
@@ -83,6 +85,16 @@ export const PedidosVendasPage: React.FC = () => {
     }
     setPedidoFaturamento(p);
     setIsModalFaturamentoOpen(true);
+  };
+
+  const handleFaturarNFCe = (p: PedidoVendaItem) => {
+    const fiscalCheck = podeFaturarPedidoNFCe(p);
+    if (!fiscalCheck.permitido) {
+      showToast(`⚠️ ${fiscalCheck.motivo}`);
+      return;
+    }
+    setPedidoFaturamento(p);
+    setIsModalFaturamentoNFCeOpen(true);
   };
 
   const handleExcluir = (id: string, numero: string) => {
@@ -403,7 +415,7 @@ export const PedidosVendasPage: React.FC = () => {
                                 style={{ padding: '0 6px', height: '26px', fontSize: '11px', color: '#3b82f6' }}
                                 title="Emitir NF-e Mod. 55"
                               >
-                                <FileCheck size={12} /> NF-e
+                                <FileCheck size={12} /> Emitir NFE
                               </button>
                             );
                           }
@@ -417,6 +429,38 @@ export const PedidosVendasPage: React.FC = () => {
                                 title={`NF-e Nº ${p.numeroNFe || ''} Autorizada`}
                               >
                                 <FileCheck size={12} /> Ver NF-e
+                              </button>
+                            );
+                          }
+                          return null;
+                        })()}
+
+                        {/* Botão Dinâmico de NFC-e (Mod. 65) */}
+                        {(() => {
+                          const checkNfce = podeFaturarPedidoNFCe(p);
+                          if (checkNfce.permitido) {
+                            return (
+                              <button
+                                type="button"
+                                onClick={() => handleFaturarNFCe(p)}
+                                className="coliseu-btn coliseu-btn-secondary"
+                                style={{ padding: '0 6px', height: '26px', fontSize: '11px', color: '#10b981' }}
+                                title="Emitir NFC-e Mod. 65 (Cupom Fiscal)"
+                              >
+                                <Receipt size={12} /> Emitir NFCe
+                              </button>
+                            );
+                          }
+                          if (p.chaveNFCeEmitida) {
+                            return (
+                              <button
+                                type="button"
+                                onClick={() => handleFaturarNFCe(p)}
+                                className="coliseu-btn coliseu-btn-secondary"
+                                style={{ padding: '0 6px', height: '26px', fontSize: '11px', color: '#10b981' }}
+                                title={`NFC-e Nº ${p.numeroNFCe || ''} Autorizada`}
+                              >
+                                <Receipt size={12} /> Ver NFC-e
                               </button>
                             );
                           }
@@ -572,7 +616,23 @@ export const PedidosVendasPage: React.FC = () => {
           }}
           pedido={pedidoFaturamento}
           onFaturamentoConcluido={(atualizado) => {
-            showToast(`✅ Faturamento do Pedido Nº ${atualizado.numeroPedido} concluído com sucesso!`);
+            showToast(`✅ Faturamento NF-e do Pedido Nº ${atualizado.numeroPedido} concluído com sucesso!`);
+            setPedidos(getPedidosVenda());
+          }}
+        />
+      )}
+
+      {/* Modal Faturamento NFC-e (Cupom Fiscal Mod. 65) */}
+      {isModalFaturamentoNFCeOpen && pedidoFaturamento && (
+        <ModalFaturamentoNFCe
+          isOpen={isModalFaturamentoNFCeOpen}
+          onClose={() => {
+            setIsModalFaturamentoNFCeOpen(false);
+            setPedidoFaturamento(null);
+          }}
+          pedido={pedidoFaturamento}
+          onFaturamentoConcluido={(atualizado) => {
+            showToast(`✅ Emissão NFC-e do Pedido Nº ${atualizado.numeroPedido} concluída com sucesso!`);
             setPedidos(getPedidosVenda());
           }}
         />
