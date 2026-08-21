@@ -453,6 +453,7 @@ try {{
     elseif (Test-Path "C:\Coliseu\Programa\NFCe\Templates\") {{ $n.DiretorioTemplates = "C:\Coliseu\Programa\NFCe\Templates\" }}
 
     $n.IgnoreInvalidCertificates = $true
+    $n.CaracteresRemoverAcentos = $true
     if ("{http_libs}" -ne "") {{ $n.HttpLibs = "{http_libs}" }}
 
     # 1. Converter TX2 para XML oficial da NFC-e (Mod. 65)

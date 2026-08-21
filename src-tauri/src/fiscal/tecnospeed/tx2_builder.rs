@@ -58,6 +58,32 @@ pub struct TecnoSpeedNfeDados {
     pub chave_referenciada: Option<String>, // Chave da NFC-e/NF-e referenciada (ex: CFOP 5.929/6.929 Acobertamento)
 }
 
+fn sanitize_fiscal_ascii(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            'á' | 'à' | 'ã' | 'â' | 'ä' => out.push('a'),
+            'Á' | 'À' | 'Ã' | 'Â' | 'Ä' => out.push('A'),
+            'é' | 'è' | 'ê' | 'ë' => out.push('e'),
+            'É' | 'È' | 'Ê' | 'Ë' => out.push('E'),
+            'í' | 'ì' | 'î' | 'ï' => out.push('i'),
+            'Í' | 'Ì' | 'Î' | 'Ï' => out.push('I'),
+            'ó' | 'ò' | 'õ' | 'ô' | 'ö' => out.push('o'),
+            'Ó' | 'Ò' | 'Õ' | 'Ô' | 'Ö' => out.push('O'),
+            'ú' | 'ù' | 'û' | 'ü' => out.push('u'),
+            'Ú' | 'Ù' | 'Û' | 'Ü' => out.push('U'),
+            'ç' => out.push('c'),
+            'Ç' => out.push('C'),
+            'ñ' => out.push('n'),
+            'Ñ' => out.push('N'),
+            '\'' | '"' | '<' | '>' | '&' | '|' => out.push(' '),
+            _ if c.is_ascii() => out.push(c),
+            _ => out.push(' '),
+        }
+    }
+    out
+}
+
 pub fn gerar_arquivo_tx2(dados: &TecnoSpeedNfeDados) -> String {
     let mut tx2 = String::new();
     let agora = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S-04:00").to_string();
@@ -76,10 +102,11 @@ pub fn gerar_arquivo_tx2(dados: &TecnoSpeedNfeDados) -> String {
         "PR" => "41",
         _ => "50",
     };
-    let nat_op_sanitized = if dados.natureza_operacao.len() > 60 {
-        dados.natureza_operacao.chars().take(60).collect::<String>()
+    let nat_op_clean = sanitize_fiscal_ascii(&dados.natureza_operacao);
+    let nat_op_sanitized = if nat_op_clean.len() > 60 {
+        nat_op_clean.chars().take(60).collect::<String>()
     } else {
-        dados.natureza_operacao.clone()
+        nat_op_clean
     };
 
     // cNF deve ser um número pseudo-aleatório de 8 dígitos estritamente diferente de nNF para não acionar a Rejeição 897 da SEFAZ
@@ -116,9 +143,9 @@ pub fn gerar_arquivo_tx2(dados: &TecnoSpeedNfeDados) -> String {
 
     // Emitente
     tx2.push_str(&format!("CNPJ_C02={}\n", clean_cnpj_emit));
-    tx2.push_str(&format!("xNome_C03={}\n", dados.emitente_razao));
+    tx2.push_str(&format!("xNome_C03={}\n", sanitize_fiscal_ascii(&dados.emitente_razao)));
     if let Some(ref fant) = dados.emitente_fantasia {
-        tx2.push_str(&format!("xFant_C04={}\n", fant));
+        tx2.push_str(&format!("xFant_C04={}\n", sanitize_fiscal_ascii(fant)));
     }
     tx2.push_str(&format!("IE_C17={}\n", dados.emitente_ie.chars().filter(|c| c.is_ascii_digit()).collect::<String>()));
     tx2.push_str("CRT_C21=1\n"); // 1 = Simples Nacional
@@ -131,67 +158,95 @@ pub fn gerar_arquivo_tx2(dados: &TecnoSpeedNfeDados) -> String {
     tx2.push_str("CEP_C13=79800000\n");
 
     // Destinatário
-    if let Some(ref doc) = clean_dest_doc {
-        if doc.len() > 11 {
-            tx2.push_str(&format!("CNPJ_E02={}\n", doc));
-        } else if !doc.is_empty() && doc != "00000000000" {
-            tx2.push_str(&format!("CPF_E03={}\n", doc));
-        } else if dados.modelo == 55 {
-            tx2.push_str("CPF_E03=70503214191\n");
-        }
-        let dest_nome = if tp_amb == "2" {
-            "NF-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL".to_string()
-        } else {
-            let nm = dados.dest_nome.as_deref().unwrap_or("CONSUMIDOR FINAL");
-            if nm.len() > 60 {
-                nm.chars().take(60).collect::<String>()
-            } else {
-                nm.to_string()
+    if dados.modelo == 65 {
+        // NFC-e Mod. 65: Apenas CPF/CNPJ opcional e xNome (sem enderDest para evitar rejeições de esquema)
+        if let Some(ref doc) = clean_dest_doc {
+            if !doc.is_empty() && doc != "00000000000" {
+                if doc.len() > 11 {
+                    tx2.push_str(&format!("CNPJ_E02={}\n", doc));
+                } else {
+                    tx2.push_str(&format!("CPF_E03={}\n", doc));
+                }
+                let dest_nome = if tp_amb == "2" {
+                    "NF-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL".to_string()
+                } else {
+                    let nm = sanitize_fiscal_ascii(dados.dest_nome.as_deref().unwrap_or("CONSUMIDOR FINAL"));
+                    if nm.len() > 60 {
+                        nm.chars().take(60).collect::<String>()
+                    } else {
+                        nm
+                    }
+                };
+                tx2.push_str(&format!("xNome_E04={}\n", dest_nome));
+                tx2.push_str("indIEDest_E16a=9\n");
             }
-        };
-        tx2.push_str(&format!("xNome_E04={}\n", dest_nome));
-        tx2.push_str("indIEDest_E16a=9\n"); // 9 = Não Contribuinte
+        }
+    } else {
+        // NF-e Mod. 55
+        if let Some(ref doc) = clean_dest_doc {
+            if doc.len() > 11 {
+                tx2.push_str(&format!("CNPJ_E02={}\n", doc));
+            } else if !doc.is_empty() && doc != "00000000000" {
+                tx2.push_str(&format!("CPF_E03={}\n", doc));
+            } else {
+                tx2.push_str("CPF_E03=70503214191\n");
+            }
+            let dest_nome = if tp_amb == "2" {
+                "NF-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL".to_string()
+            } else {
+                let nm = sanitize_fiscal_ascii(dados.dest_nome.as_deref().unwrap_or("CONSUMIDOR FINAL"));
+                if nm.len() > 60 {
+                    nm.chars().take(60).collect::<String>()
+                } else {
+                    nm
+                }
+            };
+            tx2.push_str(&format!("xNome_E04={}\n", dest_nome));
+            tx2.push_str("indIEDest_E16a=9\n"); // 9 = Não Contribuinte
 
-        let lgr = dados.dest_logradouro.as_deref().filter(|s| !s.trim().is_empty()).unwrap_or("RUA FREI ANTONIO");
-        let nro = dados.dest_numero.as_deref().filter(|s| !s.trim().is_empty()).unwrap_or("1290");
-        let bairro = dados.dest_bairro.as_deref().filter(|s| !s.trim().is_empty()).unwrap_or("JD AGUA BOA");
-        let cmun = if !dados.emitente_municipio_ibge.is_empty() { &dados.emitente_municipio_ibge } else { "5003702" };
-        let xmun = dados.dest_cidade.as_deref().filter(|s| !s.trim().is_empty()).unwrap_or("DOURADOS");
-        let uf = dados.dest_uf.as_deref().filter(|s| !s.trim().is_empty()).unwrap_or("MS");
-        let cep_raw = dados.dest_cep.as_deref().map(|c| c.chars().filter(|ch| ch.is_ascii_digit()).collect::<String>()).filter(|s| s.len() == 8).unwrap_or_else(|| "79800000".to_string());
+            let lgr = sanitize_fiscal_ascii(dados.dest_logradouro.as_deref().filter(|s| !s.trim().is_empty()).unwrap_or("RUA FREI ANTONIO"));
+            let nro = sanitize_fiscal_ascii(dados.dest_numero.as_deref().filter(|s| !s.trim().is_empty()).unwrap_or("1290"));
+            let bairro = sanitize_fiscal_ascii(dados.dest_bairro.as_deref().filter(|s| !s.trim().is_empty()).unwrap_or("JD AGUA BOA"));
+            let cmun = if !dados.emitente_municipio_ibge.is_empty() { &dados.emitente_municipio_ibge } else { "5003702" };
+            let xmun = sanitize_fiscal_ascii(dados.dest_cidade.as_deref().filter(|s| !s.trim().is_empty()).unwrap_or("DOURADOS"));
+            let uf = dados.dest_uf.as_deref().filter(|s| !s.trim().is_empty()).unwrap_or("MS");
+            let cep_raw = dados.dest_cep.as_deref().map(|c| c.chars().filter(|ch| ch.is_ascii_digit()).collect::<String>()).filter(|s| s.len() == 8).unwrap_or_else(|| "79800000".to_string());
 
-        tx2.push_str(&format!("xLgr_E06={}\n", lgr));
-        tx2.push_str(&format!("nro_E07={}\n", nro));
-        tx2.push_str(&format!("xBairro_E09={}\n", bairro));
-        tx2.push_str(&format!("cMun_E10={}\n", cmun));
-        tx2.push_str(&format!("xMun_E11={}\n", xmun));
-        tx2.push_str(&format!("UF_E12={}\n", uf));
-        tx2.push_str(&format!("CEP_E13={}\n", cep_raw));
-    } else if dados.modelo == 65 {
-        // NFC-e permite consumidor não identificado
-        tx2.push_str("xNome_E04=CONSUMIDOR NAO IDENTIFICADO\n");
-        tx2.push_str("indIEDest_E16a=9\n");
+            tx2.push_str(&format!("xLgr_E06={}\n", lgr));
+            tx2.push_str(&format!("nro_E07={}\n", nro));
+            tx2.push_str(&format!("xBairro_E09={}\n", bairro));
+            tx2.push_str(&format!("cMun_E10={}\n", cmun));
+            tx2.push_str(&format!("xMun_E11={}\n", xmun));
+            tx2.push_str(&format!("UF_E12={}\n", uf));
+            tx2.push_str(&format!("CEP_E13={}\n", cep_raw));
+        }
     }
 
     // Itens da Nota
     for (i, it) in dados.itens.iter().enumerate() {
         let n_item = i + 1;
+        let x_prod = if tp_amb == "2" && i == 0 {
+            "NOTA FISCAL EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL".to_string()
+        } else {
+            sanitize_fiscal_ascii(&it.descricao)
+        };
+
         tx2.push_str("INCLUIRITEM\n");
         tx2.push_str(&format!("nItem_H02={}\n", n_item));
-        tx2.push_str(&format!("cProd_I02={}\n", it.codigo));
+        tx2.push_str(&format!("cProd_I02={}\n", sanitize_fiscal_ascii(&it.codigo)));
         tx2.push_str(&format!("cEAN_I03={}\n", "SEM GTIN"));
-        tx2.push_str(&format!("xProd_I04={}\n", it.descricao));
+        tx2.push_str(&format!("xProd_I04={}\n", x_prod));
         tx2.push_str(&format!("NCM_I05={}\n", it.ncm.chars().filter(|c| c.is_ascii_digit()).collect::<String>()));
         if let Some(ref cest) = it.cest {
             tx2.push_str(&format!("CEST_I05c={}\n", cest.chars().filter(|c| c.is_ascii_digit()).collect::<String>()));
         }
         tx2.push_str(&format!("CFOP_I08={}\n", it.cfop.chars().filter(|c| c.is_ascii_digit()).collect::<String>()));
-        tx2.push_str(&format!("uCom_I09={}\n", it.unidade));
+        tx2.push_str(&format!("uCom_I09={}\n", sanitize_fiscal_ascii(&it.unidade)));
         tx2.push_str(&format!("qCom_I10={:.4}\n", it.quantidade));
         tx2.push_str(&format!("vUnCom_I10a={:.4}\n", it.valor_unitario));
         tx2.push_str(&format!("vProd_I11={:.2}\n", it.valor_total));
         tx2.push_str(&format!("cEANTrib_I12={}\n", "SEM GTIN"));
-        tx2.push_str(&format!("uTrib_I13={}\n", it.unidade));
+        tx2.push_str(&format!("uTrib_I13={}\n", sanitize_fiscal_ascii(&it.unidade)));
         tx2.push_str(&format!("qTrib_I14={:.4}\n", it.quantidade));
         tx2.push_str(&format!("vUnTrib_I14a={:.4}\n", it.valor_unitario));
         if let Some(desc) = it.valor_desconto {
@@ -237,8 +292,12 @@ pub fn gerar_arquivo_tx2(dados: &TecnoSpeedNfeDados) -> String {
     tx2.push_str(&format!("vNF_W16={:.2}\n", dados.valor_total_nota));
     tx2.push_str("vTotTrib_W16a=0.00\n");
 
-    // Transporte
-    tx2.push_str("modFrete_X02=0\n");
+    // Transporte (Em NFC-e mod 65 SEMPRE deve ser 9 - Sem Ocorrencia de Transporte)
+    if dados.modelo == 65 {
+        tx2.push_str("modFrete_X02=9\n");
+    } else {
+        tx2.push_str("modFrete_X02=0\n");
+    }
 
     // Pagamentos
     if !dados.pagamentos.is_empty() {
@@ -250,21 +309,19 @@ pub fn gerar_arquivo_tx2(dados: &TecnoSpeedNfeDados) -> String {
         }
     } else {
         tx2.push_str("INCLUIRPARTE=YA\n");
-        tx2.push_str("tPag_YA02=15\n");
+        tx2.push_str("tPag_YA02=01\n");
         tx2.push_str(&format!("vPag_YA03={:.2}\n", dados.valor_total_nota));
         tx2.push_str("SALVARPARTE=YA\n");
     }
 
     // Informações Adicionais
-    tx2.push_str(&format!(
-        "infCpl_Z03={}\n",
-        dados.informacoes_adicionais.as_deref().unwrap_or("Documento emitido por ME ou EPP optante pelo Simples Nacional.")
-    ));
+    let inf_cpl_clean = sanitize_fiscal_ascii(dados.informacoes_adicionais.as_deref().unwrap_or("Documento emitido por ME ou EPP optante pelo Simples Nacional."));
+    tx2.push_str(&format!("infCpl_Z03={}\n", inf_cpl_clean));
 
-    // Responsável Técnico
+    // Responsável Técnico (Obrigatório em MS, PR, SC e outros estados)
     tx2.push_str("CNPJ_ZD02=03661869000175\n");
-    tx2.push_str("xContato_ZD04=TECNOSPEED TECNOLOGIA\n");
-    tx2.push_str("email_ZD05=contato@tecnospeed.com.br\n");
+    tx2.push_str("xContato_ZD04=SILENUS SOFTWARE LTDA\n");
+    tx2.push_str("email_ZD05=suporte@tecnospeed.com.br\n");
     tx2.push_str("fone_ZD06=4430379500\n");
 
     tx2.push_str("SALVAR\n");

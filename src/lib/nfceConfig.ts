@@ -36,6 +36,7 @@ export interface NfceConfiguracaoCompleta {
   ultimoNumeroAutorizadoNfce?: number;
   cnpjEmitente: string;
   nomeEmitente: string;
+  inscricaoEstadualEmitente?: string;
   certificadoDigital: string;
   caminhoArquivoPfx: string;
   senhaCertificadoA1: string;
@@ -92,11 +93,12 @@ export const CONFIG_NFCE_PADRAO: NfceConfiguracaoCompleta = {
   serieNfce: 1,
   proximoNumeroNfce: 120,
   ultimoNumeroAutorizadoNfce: 119,
-  cnpjEmitente: '05.766.577/0001-22',
-  nomeEmitente: 'PIVETA DIST. DE TINTAS AUTOMOTIVA LTDA',
-  certificadoDigital: 'PIVETA DIST. DE TINTAS AUTOMOTIVA LTDA (A1 - Validade: 12/2026)',
-  caminhoArquivoPfx: 'C:\\ERPFULL\\NFE\\Certificado.pfx',
-  senhaCertificadoA1: '',
+  cnpjEmitente: '68.148.349/0001-09',
+  nomeEmitente: 'LIVRARIA DAMASCO LTDA',
+  inscricaoEstadualEmitente: '283261064',
+  certificadoDigital: 'LIVRARIA DAMASCO LTDA:68148349000109',
+  caminhoArquivoPfx: 'C:\\ERPFULL\\CERTDAMASCO 1234.PFX',
+  senhaCertificadoA1: '1234',
   idCsc: '000001',
   codigoCsc: '1A2B3C4D5E6F7G8H9I0J1K2L3M4N5O6P',
   tipoImpressaoDanfe: 'BOBINA_80MM',
@@ -141,6 +143,16 @@ export function getNfceConfig(): NfceConfiguracaoCompleta {
     }
     if (!merged.versaoEsquema || merged.versaoEsquema.startsWith('pl_010') || merged.versaoEsquema === 'vm60') {
       merged.versaoEsquema = 'pl_009o';
+    }
+    if (!merged.inscricaoEstadualEmitente || merged.inscricaoEstadualEmitente === '283490001' || merged.inscricaoEstadualEmitente === '283261864') {
+      merged.inscricaoEstadualEmitente = '283261064';
+    }
+    if (!merged.cnpjEmitente || merged.cnpjEmitente === '05.766.577/0001-22') {
+      merged.cnpjEmitente = '68.148.349/0001-09';
+      merged.nomeEmitente = 'LIVRARIA DAMASCO LTDA';
+      merged.certificadoDigital = 'LIVRARIA DAMASCO LTDA:68148349000109';
+      merged.caminhoArquivoPfx = 'C:\\ERPFULL\\CERTDAMASCO 1234.PFX';
+      merged.senhaCertificadoA1 = '1234';
     }
     if (!merged.pastaArmazenamentoNfce || merged.pastaArmazenamentoNfce === 'C:\\ERPFULL\\NFCE\\' || merged.pastaArmazenamentoNfce === 'C:\\ERPFULL\\NFE\\') {
       merged.pastaArmazenamentoNfce = 'C:\\ERPFULL\\NFE\\XmlDestinatario\\';

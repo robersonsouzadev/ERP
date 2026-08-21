@@ -121,7 +121,7 @@ export const ModalFaturamentoNFCe: React.FC<ModalFaturamentoNFCeProps> = ({
         emitente_cnpj: configAtual.cnpjEmitente,
         emitente_razao: configAtual.nomeEmitente,
         emitente_fantasia: undefined,
-        emitente_ie: '283490001',
+        emitente_ie: configAtual.inscricaoEstadualEmitente || '283261064',
         emitente_uf: ufSigla,
         emitente_municipio_ibge: '5003702',
         dest_cpf_cnpj: cpfCnpjConsumidor.trim() || undefined,
