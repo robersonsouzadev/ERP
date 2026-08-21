@@ -53,7 +53,7 @@ export interface NfceConfiguracaoCompleta {
   usarModoSincrono: boolean;
 
   // --- 2. OUTROS DADOS & CUPOM FISCAL ---
-  versaoEsquema: string; // Ex: 'pl_010b'
+  versaoEsquema: string; // Ex: 'pl_009o'
   versaoManual: string;  // Ex: 'vm60'
   fusoHorario: string;   // Ex: '-04:00'
   validarEsquema: boolean;
@@ -110,7 +110,7 @@ export const CONFIG_NFCE_PADRAO: NfceConfiguracaoCompleta = {
   ambienteDestino: 'HOMOLOGAÇÃO',
   usarModoSincrono: true,
 
-  versaoEsquema: 'pl_010b',
+  versaoEsquema: 'pl_009o',
   versaoManual: 'vm60',
   fusoHorario: '-04:00',
   validarEsquema: true,
@@ -120,12 +120,12 @@ export const CONFIG_NFCE_PADRAO: NfceConfiguracaoCompleta = {
   pastaArmazenamentoXmlCancelados: 'C:\\ERPFULL\\NFCE\\Cancelados',
   pastaArmazenamentoXmlEntrada: 'C:\\ERPFULL\\NFE\\Entrada\\',
 
-  cnpjResponsavelTecnico: '12.345.678/0001-90',
-  contatoResponsavelTecnico: 'COLISEU SISTEMAS - DEPARTAMENTO DE ENGENHARIA FISCAL',
-  foneResponsavelTecnico: '(67) 3421-9000',
-  emailResponsavelTecnico: 'fiscal@coliseusistemas.com.br',
-  idCsrt: '00001',
-  hashCsrt: 'A9B8C7D6E5F4G3H2I1J0K9L8M7N6O5P4',
+  cnpjResponsavelTecnico: '03.661.869/0001-75',
+  contatoResponsavelTecnico: 'SILENUS SOFTWARE LTDA',
+  foneResponsavelTecnico: '(44) 3037-9500',
+  emailResponsavelTecnico: 'suporte@tecnospeed.com.br',
+  idCsrt: '',
+  hashCsrt: '',
 };
 
 const STORAGE_KEY_NFCE_CONFIG = 'coliseu_nfce_configuracao_completa';
@@ -138,6 +138,9 @@ export function getNfceConfig(): NfceConfiguracaoCompleta {
     const merged = { ...CONFIG_NFCE_PADRAO, ...parsed };
     if (!merged.modoOperacao || merged.modoOperacao === 'TREINAMENTO') {
       merged.modoOperacao = 'TECNOSPEED';
+    }
+    if (!merged.versaoEsquema || merged.versaoEsquema.startsWith('pl_010') || merged.versaoEsquema === 'vm60') {
+      merged.versaoEsquema = 'pl_009o';
     }
     if (!merged.pastaArmazenamentoNfce || merged.pastaArmazenamentoNfce === 'C:\\ERPFULL\\NFCE\\' || merged.pastaArmazenamentoNfce === 'C:\\ERPFULL\\NFE\\') {
       merged.pastaArmazenamentoNfce = 'C:\\ERPFULL\\NFE\\XmlDestinatario\\';

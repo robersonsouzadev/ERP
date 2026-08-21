@@ -64,7 +64,7 @@ impl Default for TecnoSpeedNfceComponenteConfig {
             formato_danfce: "0".to_string(), // 0 = Padrão / Bobina
             impressora_danfce: "Microsoft Print to PDF".to_string(),
             http_libs: "wininet,sbb".to_string(),
-            versao_esquema: "pl_010b".to_string(),
+            versao_esquema: "pl_009o".to_string(),
         }
     }
 }
@@ -515,7 +515,7 @@ try {{
         servidores_prod = cfg.arquivo_servidores_prod.replace('\\', "\\\\"),
         http_libs = cfg.http_libs,
         tx2_path = tx2_file.to_string_lossy().replace('\\', "\\\\"),
-        versao_esquema = cfg.versao_esquema,
+        versao_esquema = if cfg.versao_esquema.starts_with("pl_010") || cfg.versao_esquema.is_empty() { "pl_009o" } else { &cfg.versao_esquema },
         sincrono = if sincrono { "$true" } else { "$false" },
         lote = num_lote
     );
