@@ -781,7 +781,7 @@ pub fn create_tables(conn: &Connection) -> Result<()> {
             x_version INTEGER NOT NULL DEFAULT 1,
             is_deleted INTEGER NOT NULL DEFAULT 0,
 
-            usuario_id TEXT REFERENCES usuarios(id),
+            usuario_id TEXT,
             usuario_nome TEXT,
             acao TEXT NOT NULL,
             recurso TEXT NOT NULL,
@@ -1590,6 +1590,7 @@ pub fn create_tables(conn: &Connection) -> Result<()> {
     migrate_filiais_nfe_config_columns(conn)?;
     migrate_filiais_nfce_config_columns(conn)?;
     migrate_filiais_nfse_config_columns(conn)?;
+    migrate_audit_logs_remove_fk(conn)?;
 
     info!("Schema DDL executado com sucesso. Todas as 65 tabelas criadas e migradas.");
 
@@ -1833,6 +1834,46 @@ fn migrate_filiais_nfse_config_columns(conn: &Connection) -> Result<()> {
             let alter_sql = format!("ALTER TABLE filiais_nfse_config ADD COLUMN {} {};", col_name, col_def);
             let _ = conn.execute(&alter_sql, []);
         }
+    }
+
+    Ok(())
+}
+
+fn migrate_audit_logs_remove_fk(conn: &Connection) -> Result<()> {
+    // Verifica se a tabela audit_logs tem FK para usuarios checando a SQL de criação
+    let table_sql: String = conn
+        .query_row(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='audit_logs'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap_or_default();
+
+    if table_sql.contains("REFERENCES usuarios") {
+        info!("Migrando audit_logs: removendo FK para usuarios...");
+        conn.execute_batch(
+            "
+            CREATE TABLE IF NOT EXISTS audit_logs_new (
+                id TEXT PRIMARY KEY NOT NULL,
+                device_id TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                x_sync_status TEXT NOT NULL DEFAULT 'pending',
+                x_version INTEGER NOT NULL DEFAULT 1,
+                is_deleted INTEGER NOT NULL DEFAULT 0,
+                usuario_id TEXT,
+                usuario_nome TEXT,
+                acao TEXT NOT NULL,
+                recurso TEXT NOT NULL,
+                detalhes TEXT
+            );
+            INSERT INTO audit_logs_new SELECT * FROM audit_logs;
+            DROP TABLE audit_logs;
+            ALTER TABLE audit_logs_new RENAME TO audit_logs;
+            CREATE INDEX IF NOT EXISTS idx_audit_logs_sync ON audit_logs(x_sync_status, updated_at);
+            "
+        )?;
+        info!("Migração audit_logs concluída.");
     }
 
     Ok(())

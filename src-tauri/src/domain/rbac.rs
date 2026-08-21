@@ -334,7 +334,7 @@ pub fn autenticar_funcionario(conn: &Connection, username: &str, senha: &str) ->
         supervisor_id, gerente_id, desconto_maximo_permitido, banco_favorecido, agencia, conta_corrente,
         chave_pix, empresa_id, filial_padrao_id, acesso_todas_empresas, caixa_pdv_vinculado, password_hash
         FROM funcionarios 
-        WHERE username = ?1 AND is_deleted = 0"
+        WHERE LOWER(username) = LOWER(?1) AND is_deleted = 0"
     ).map_err(|e| e.to_string())?;
 
     let row = stmt.query_row(params![username], |r| {
