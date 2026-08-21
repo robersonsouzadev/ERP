@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTheme } from '../../lib/theme';
 
 export interface ColiseuLogoProps {
   size?: 'sm' | 'md' | 'lg';
@@ -6,6 +7,7 @@ export interface ColiseuLogoProps {
   className?: string;
   style?: React.CSSProperties;
   showErpBadge?: boolean;
+  themeOverride?: 'dark' | 'light';
 }
 
 export const ColiseuLogo: React.FC<ColiseuLogoProps> = ({
@@ -14,7 +16,11 @@ export const ColiseuLogo: React.FC<ColiseuLogoProps> = ({
   className = '',
   style,
   showErpBadge = true,
+  themeOverride,
 }) => {
+  const { theme } = useTheme();
+  const currentTheme = themeOverride || theme || 'dark';
+
   const heights = {
     sm: 26,
     md: 32,
@@ -29,6 +35,7 @@ export const ColiseuLogo: React.FC<ColiseuLogoProps> = ({
 
   const currentHeight = heights[size] || 32;
   const currentIconSize = iconSizes[size] || 28;
+  const logoSrc = currentTheme === 'light' ? '/coliseu-logo.png' : '/coliseu-logo-dark.png';
 
   if (variant === 'icon') {
     return (
@@ -68,9 +75,9 @@ export const ColiseuLogo: React.FC<ColiseuLogoProps> = ({
       }}
       className={className}
     >
-      {/* Imagem Oficial da Coliseu Sistemas */}
+      {/* Imagem Oficial da Coliseu Sistemas (Original no modo Claro, Adaptada no modo Escuro) */}
       <img
-        src="/coliseu-logo-dark.png"
+        src={logoSrc}
         alt="Coliseu ERP"
         style={{
           height: `${currentHeight}px`,
