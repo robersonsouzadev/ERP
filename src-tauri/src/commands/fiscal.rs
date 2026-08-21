@@ -1992,38 +1992,46 @@ pub async fn tecnospeed_transmitir_nfce_tx2_cmd(
 
     let res = tecnospeed::componente_nfce_client::transmitir_tx2_nfce(&cfg, &num_lote, &tx2_str, is_sincrono)?;
 
-    let mut c_stat = 0;
-    let mut x_motivo = String::new();
-    let mut n_prot = None;
-    let mut ch_nfe = None;
+    let extrair_tag = |xml_str: &str, tag: &str| -> Option<String> {
+        let open = format!("<{}>", tag);
+        let close = format!("</{}>", tag);
+        if let Some(start) = xml_str.find(&open) {
+            let s = start + open.len();
+            if let Some(end) = xml_str[s..].find(&close) {
+                return Some(xml_str[s..s + end].trim().to_string());
+            }
+        }
+        None
+    };
 
-    if let Some(pos) = res.find("<cStat>") {
-        if let Some(end) = res[pos..].find("</cStat>") {
-            c_stat = res[pos + 7..pos + end].trim().parse().unwrap_or(0);
-        }
-    }
-    if let Some(pos) = res.find("<xMotivo>") {
-        if let Some(end) = res[pos..].find("</xMotivo>") {
-            x_motivo = res[pos + 9..pos + end].trim().to_string();
-        }
-    }
-    if let Some(pos) = res.find("<nProt>") {
-        if let Some(end) = res[pos..].find("</nProt>") {
-            n_prot = Some(res[pos + 7..pos + end].trim().to_string());
-        }
-    }
-    if let Some(pos) = res.find("<chNFe>") {
-        if let Some(end) = res[pos..].find("</chNFe>") {
-            ch_nfe = Some(res[pos + 7..pos + end].trim().to_string());
-        }
-    }
+    let prot_section = if let Some(pos) = res.find("<infProt") {
+        &res[pos..]
+    } else {
+        &res
+    };
 
-    let sucesso = c_stat == 100 || c_stat == 104 || c_stat == 150;
+    let c_stat: u32 = extrair_tag(prot_section, "cStat")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or_else(|| {
+            extrair_tag(&res, "cStat").and_then(|v| v.parse().ok()).unwrap_or(0)
+        });
+
+    let x_motivo = extrair_tag(prot_section, "xMotivo")
+        .or_else(|| extrair_tag(&res, "xMotivo"))
+        .unwrap_or_else(|| format!("Resposta TecnoSpeed NFC-e: {}", res.trim()));
+
+    let n_prot = extrair_tag(prot_section, "nProt")
+        .or_else(|| extrair_tag(&res, "nProt"));
+
+    let ch_nfe = extrair_tag(prot_section, "chNFe")
+        .or_else(|| extrair_tag(&res, "chNFe"));
+
+    let sucesso = c_stat == 100 || c_stat == 150;
     let agora = chrono::Utc::now().to_rfc3339();
 
     Ok(sefaz_client::SefazResponse {
         c_stat,
-        x_motivo: if x_motivo.is_empty() { format!("Resposta TecnoSpeed NFC-e: {}", res) } else { x_motivo },
+        x_motivo,
         n_prot,
         dh_rec_bto: Some(agora),
         ch_nfe,

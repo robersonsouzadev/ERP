@@ -160,12 +160,17 @@ export const ModalFaturamentoNFCe: React.FC<ModalFaturamentoNFCeProps> = ({
           sincrono: true,
         });
 
-        if (!res.sucesso && res.c_stat !== 100 && res.c_stat !== 104) {
-          throw new Error(`SEFAZ NFC-e Rejeição: cStat ${res.c_stat} - ${res.x_motivo}`);
+        const cStatNum = Number(res.c_stat);
+        const ehAutorizado = cStatNum === 100 || cStatNum === 150;
+        if (!ehAutorizado) {
+          throw new Error(`SEFAZ NFC-e Rejeição: cStat ${res.c_stat} - ${res.x_motivo || 'Nota rejeitada pela SEFAZ'}`);
         }
 
-        chaveRetorno = res.ch_nfe || `502608${configAtual.cnpjEmitente.replace(/\D/g, '')}65001${String(numSequencial).padStart(9, '0')}1${Math.floor(10000000 + Math.random() * 90000000)}`;
-        protocoloRetorno = res.n_prot || `15026000${Math.floor(1000000 + Math.random() * 9000000)}`;
+        chaveRetorno = res.ch_nfe || '';
+        protocoloRetorno = res.n_prot || '';
+        if (!chaveRetorno || !protocoloRetorno) {
+          throw new Error(`SEFAZ NFC-e: Chave ou Protocolo não retornados pela SEFAZ. ${res.x_motivo || ''}`);
+        }
       } else {
         // Simulação / ACBr / Outros
         chaveRetorno = `502608${configAtual.cnpjEmitente.replace(/\D/g, '')}65001${String(numSequencial).padStart(9, '0')}1${Math.floor(10000000 + Math.random() * 90000000)}`;

@@ -305,6 +305,9 @@ pub fn gerar_arquivo_tx2(dados: &TecnoSpeedNfeDados) -> String {
             tx2.push_str("INCLUIRPARTE=YA\n");
             tx2.push_str(&format!("tPag_YA02={}\n", pag.meio_pagamento));
             tx2.push_str(&format!("vPag_YA03={:.2}\n", pag.valor));
+            if pag.meio_pagamento != "01" && pag.meio_pagamento != "90" {
+                tx2.push_str("tpIntegra_YA04a=2\n");
+            }
             tx2.push_str("SALVARPARTE=YA\n");
         }
     } else {

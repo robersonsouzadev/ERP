@@ -90,11 +90,11 @@ impl Default for TecnoSpeedComponenteConfig {
     }
 }
 
-/// Garante que os arquivos de licença .dat da TecnoSpeed existam e sejam graváveis em diretórios do PowerShell
+/// Garante que os arquivos de licença .dat da TecnoSpeed existam no diretório operacional do ERP
 fn ensure_license_files() {
-    let ps_dirs = [
-        "C:\\Windows\\SysWOW64\\WindowsPowerShell\\v1.0",
-        "C:\\Windows\\System32\\WindowsPowerShell\\v1.0",
+    let app_dirs = [
+        "C:\\ERPFULL\\NFE",
+        "C:\\ERPFULL\\NFE\\NFCe",
     ];
     let license_files = [
         "spdLicenseNFe.dat",
@@ -104,15 +104,14 @@ fn ensure_license_files() {
         "spdLicenseCte.dat",
     ];
 
-    for dir in &ps_dirs {
+    for dir in &app_dirs {
+        let _ = fs::create_dir_all(dir);
         for file in &license_files {
             let target = Path::new(dir).join(file);
             if !target.exists() {
                 let coliseu_source = Path::new("C:\\Coliseu\\Programa").join(file);
                 if coliseu_source.exists() {
                     let _ = fs::copy(&coliseu_source, &target);
-                } else {
-                    let _ = fs::write(&target, b"");
                 }
             }
         }
