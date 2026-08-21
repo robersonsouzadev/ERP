@@ -102,7 +102,7 @@ export const CONFIG_NFCE_PADRAO: NfceConfiguracaoCompleta = {
   idCsc: '000001',
   codigoCsc: '1A2B3C4D5E6F7G8H9I0J1K2L3M4N5O6P',
   tipoImpressaoDanfe: 'BOBINA_80MM',
-  modeloDanfce: 'C:\\ERPFULL\\NFE\\NFCe\\Templates\\Danfce.rtm',
+  modeloDanfce: 'C:\\ERPFULL\\NFE\\NFCe\\Templates\\vm60\\Danfce\\retrato.rtm',
   cortarPapelAutomatico: true,
   formaEmissao: 'NORMAL',
   caminhoLogotipo: 'C:\\ERPFULL\\NFCE\\logo_cupom.jpg',
@@ -143,6 +143,9 @@ export function getNfceConfig(): NfceConfiguracaoCompleta {
     }
     if (!merged.versaoEsquema || merged.versaoEsquema.startsWith('pl_010') || merged.versaoEsquema === 'vm60') {
       merged.versaoEsquema = 'pl_009o';
+    }
+    if (!merged.modeloDanfce || merged.modeloDanfce === 'C:\\ERPFULL\\NFE\\NFCe\\Templates\\Danfce.rtm') {
+      merged.modeloDanfce = 'C:\\ERPFULL\\NFE\\NFCe\\Templates\\vm60\\Danfce\\retrato.rtm';
     }
     if (!merged.inscricaoEstadualEmitente || merged.inscricaoEstadualEmitente === '283490001' || merged.inscricaoEstadualEmitente === '283261864') {
       merged.inscricaoEstadualEmitente = '283261064';

@@ -725,6 +725,23 @@ try {{
     Set-Location "C:\ERPFULL\NFE\NFCe"
     $n = New-Object -ComObject "NFCeX.spdNFCeX"
     $n.ConfigurarSoftwareHouse("{cnpj_sh}", "{token_sh}")
+    $n.UF = "{uf}"
+    $n.Ambiente = {ambiente}
+    $n.VersaoManual = "{versao_manual}"
+
+    if (Test-Path "{servidores_hom}") {{ $n.ArquivoServidoresHom = "{servidores_hom}" }}
+    elseif (Test-Path "C:\ERPFULL\NFE\nfceServidoresHom.ini") {{ $n.ArquivoServidoresHom = "C:\ERPFULL\NFE\nfceServidoresHom.ini" }}
+    elseif (Test-Path "C:\Coliseu\Programa\nfceServidoresHom.ini") {{ $n.ArquivoServidoresHom = "C:\Coliseu\Programa\nfceServidoresHom.ini" }}
+
+    if (Test-Path "{servidores_prod}") {{ $n.ArquivoServidoresProd = "{servidores_prod}" }}
+    elseif (Test-Path "C:\ERPFULL\NFE\nfceServidoresProd.ini") {{ $n.ArquivoServidoresProd = "C:\ERPFULL\NFE\nfceServidoresProd.ini" }}
+    elseif (Test-Path "C:\Coliseu\Programa\nfceServidoresProd.ini") {{ $n.ArquivoServidoresProd = "C:\Coliseu\Programa\nfceServidoresProd.ini" }}
+
+    if (Test-Path "{esquemas}") {{ $n.DiretorioEsquemas = "{esquemas}" }}
+    elseif (Test-Path "C:\ERPFULL\NFE\NFCe\Esquemas\") {{ $n.DiretorioEsquemas = "C:\ERPFULL\NFE\NFCe\Esquemas\" }}
+
+    if (Test-Path "{templates}") {{ $n.DiretorioTemplates = "{templates}" }}
+    elseif (Test-Path "C:\ERPFULL\NFE\NFCe\Templates\") {{ $n.DiretorioTemplates = "C:\ERPFULL\NFE\NFCe\Templates\" }}
 
     $xmlParam = "{xml_param}"
     if ($xmlParam.Length -eq 44 -and (Test-Path "C:\ERPFULL\NFE\NFCe\XmlDestinatario\$xmlParam-nfe.xml")) {{
@@ -732,9 +749,18 @@ try {{
     }}
 
     $modelo = "{modelo}"
-    if (-not (Test-Path $modelo)) {{ $modelo = "" }}
+    if (-not (Test-Path $modelo)) {{
+        if (Test-Path "C:\ERPFULL\NFE\NFCe\Templates\vm60\Danfce\retrato.rtm") {{
+            $modelo = "C:\ERPFULL\NFE\NFCe\Templates\vm60\Danfce\retrato.rtm"
+        }} elseif (Test-Path "C:\Coliseu\Programa\NFCe\Templates\vm60\Danfce\retrato.rtm") {{
+            $modelo = "C:\Coliseu\Programa\NFCe\Templates\vm60\Danfce\retrato.rtm"
+        }} else {{
+            $modelo = ""
+        }}
+    }}
 
-    $n.ImprimirDanfce($xmlParam, $modelo, "{impressora}")
+    # spdNFCeX.ImprimirDanfce(aIdOuXML, aIdLote, aModeloDanfce, aImpressora)
+    $n.ImprimirDanfce($xmlParam, "", $modelo, "{impressora}")
     Write-Host "---TECNOSPEED_SUCCESS---"
     Write-Host "DANFCE impresso com sucesso na impressora {impressora}."
 }} catch {{
@@ -744,6 +770,13 @@ try {{
 "#,
         cnpj_sh = cnpj_sh_clean,
         token_sh = cfg.token_software_house.trim(),
+        uf = normalizar_uf_sigla(&cfg.uf),
+        ambiente = cfg.ambiente,
+        versao_manual = cfg.versao_manual,
+        servidores_hom = cfg.arquivo_servidores_hom.replace('\\', "\\\\"),
+        servidores_prod = cfg.arquivo_servidores_prod.replace('\\', "\\\\"),
+        esquemas = cfg.diretorio_esquemas.replace('\\', "\\\\"),
+        templates = cfg.diretorio_templates.replace('\\', "\\\\"),
         xml_param = xml_proc_ou_chave.replace('"', "`\""),
         modelo = cfg.modelo_danfce.replace('\\', "\\\\"),
         impressora = imp_nome.replace('"', "`\"")
@@ -767,6 +800,23 @@ try {{
     Set-Location "C:\ERPFULL\NFE\NFCe"
     $n = New-Object -ComObject "NFCeX.spdNFCeX"
     $n.ConfigurarSoftwareHouse("{cnpj_sh}", "{token_sh}")
+    $n.UF = "{uf}"
+    $n.Ambiente = {ambiente}
+    $n.VersaoManual = "{versao_manual}"
+
+    if (Test-Path "{servidores_hom}") {{ $n.ArquivoServidoresHom = "{servidores_hom}" }}
+    elseif (Test-Path "C:\ERPFULL\NFE\nfceServidoresHom.ini") {{ $n.ArquivoServidoresHom = "C:\ERPFULL\NFE\nfceServidoresHom.ini" }}
+    elseif (Test-Path "C:\Coliseu\Programa\nfceServidoresHom.ini") {{ $n.ArquivoServidoresHom = "C:\Coliseu\Programa\nfceServidoresHom.ini" }}
+
+    if (Test-Path "{servidores_prod}") {{ $n.ArquivoServidoresProd = "{servidores_prod}" }}
+    elseif (Test-Path "C:\ERPFULL\NFE\nfceServidoresProd.ini") {{ $n.ArquivoServidoresProd = "C:\ERPFULL\NFE\nfceServidoresProd.ini" }}
+    elseif (Test-Path "C:\Coliseu\Programa\nfceServidoresProd.ini") {{ $n.ArquivoServidoresProd = "C:\Coliseu\Programa\nfceServidoresProd.ini" }}
+
+    if (Test-Path "{esquemas}") {{ $n.DiretorioEsquemas = "{esquemas}" }}
+    elseif (Test-Path "C:\ERPFULL\NFE\NFCe\Esquemas\") {{ $n.DiretorioEsquemas = "C:\ERPFULL\NFE\NFCe\Esquemas\" }}
+
+    if (Test-Path "{templates}") {{ $n.DiretorioTemplates = "{templates}" }}
+    elseif (Test-Path "C:\ERPFULL\NFE\NFCe\Templates\") {{ $n.DiretorioTemplates = "C:\ERPFULL\NFE\NFCe\Templates\" }}
 
     $xmlParam = "{xml_param}"
     if ($xmlParam.Length -eq 44 -and (Test-Path "C:\ERPFULL\NFE\NFCe\XmlDestinatario\$xmlParam-nfe.xml")) {{
@@ -774,9 +824,19 @@ try {{
     }}
 
     $modelo = "{modelo}"
-    if (-not (Test-Path $modelo)) {{ $modelo = "" }}
+    if (-not (Test-Path $modelo)) {{
+        if (Test-Path "C:\ERPFULL\NFE\NFCe\Templates\vm60\Danfce\retrato.rtm") {{
+            $modelo = "C:\ERPFULL\NFE\NFCe\Templates\vm60\Danfce\retrato.rtm"
+        }} elseif (Test-Path "C:\Coliseu\Programa\NFCe\Templates\vm60\Danfce\retrato.rtm") {{
+            $modelo = "C:\Coliseu\Programa\NFCe\Templates\vm60\Danfce\retrato.rtm"
+        }} else {{
+            $modelo = ""
+        }}
+    }}
 
-    $n.ExportarDanfce($xmlParam, $modelo, 1, "{pdf_path}")
+    # spdNFCeX.ExportarDanfce(aIdOuXML, aIdLote, aModeloDanfce, aFormatoExportacao, aNomeArquivo)
+    # Formato 1 = PDF
+    $n.ExportarDanfce($xmlParam, "", $modelo, 1, "{pdf_path}")
     Write-Host "---TECNOSPEED_SUCCESS---"
     Write-Host "DANFCE exportado para PDF em {pdf_path}"
 }} catch {{
@@ -786,6 +846,13 @@ try {{
 "#,
         cnpj_sh = cnpj_sh_clean,
         token_sh = cfg.token_software_house.trim(),
+        uf = normalizar_uf_sigla(&cfg.uf),
+        ambiente = cfg.ambiente,
+        versao_manual = cfg.versao_manual,
+        servidores_hom = cfg.arquivo_servidores_hom.replace('\\', "\\\\"),
+        servidores_prod = cfg.arquivo_servidores_prod.replace('\\', "\\\\"),
+        esquemas = cfg.diretorio_esquemas.replace('\\', "\\\\"),
+        templates = cfg.diretorio_templates.replace('\\', "\\\\"),
         xml_param = xml_proc_ou_chave.replace('"', "`\""),
         modelo = cfg.modelo_danfce.replace('\\', "\\\\"),
         pdf_path = caminho_pdf.replace('\\', "\\\\")
@@ -808,7 +875,15 @@ try {{
     $n.ConfigurarSoftwareHouse("{cnpj_sh}", "{token_sh}")
 
     $modelo = "{modelo}"
-    $n.EditarModeloDanfce($modelo)
+    if (-not (Test-Path $modelo)) {{
+        if (Test-Path "C:\ERPFULL\NFE\NFCe\Templates\vm60\Danfce\retrato.rtm") {{
+            $modelo = "C:\ERPFULL\NFE\NFCe\Templates\vm60\Danfce\retrato.rtm"
+        }} else {{
+            $modelo = ""
+        }}
+    }}
+
+    $n.EditarModeloDanfce("", "", $modelo)
     Write-Host "---TECNOSPEED_SUCCESS---"
     Write-Host "Editor do Modelo DANFCE finalizado."
 }} catch {{
