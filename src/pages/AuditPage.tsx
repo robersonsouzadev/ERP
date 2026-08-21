@@ -162,7 +162,7 @@ export function AuditPage() {
           <div>
             <PageHeader
               title="Audit & Benchmark Command Center"
-              subtitle="ERP Híbrido Local-First • Monitoramento de Conformidade (Audit Gates 1 - 6)"
+              subtitle="Coliseu ERP • Monitoramento de Conformidade (Audit Gates 1 - 6)"
               icon={<ShieldCheck style={{ color: '#38bdf8', width: '1.5rem', height: '1.5rem' }} />}
             />
 

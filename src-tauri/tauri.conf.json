@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "ERP Híbrido",
+  "productName": "Coliseu ERP",
   "version": "0.1.0",
-  "identifier": "com.antigravity.erp",
+  "identifier": "com.coliseu.erp",
   "build": {
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "ERP Híbrido Local-First",
+        "title": "Coliseu ERP",
         "width": 1280,
         "height": 800,
         "resizable": true,
