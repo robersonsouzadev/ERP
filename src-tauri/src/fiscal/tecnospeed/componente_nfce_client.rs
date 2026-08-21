@@ -749,8 +749,14 @@ try {{
     elseif (Test-Path "C:\ERPFULL\NFE\NFCe\Templates\") {{ $n.DiretorioTemplates = "C:\ERPFULL\NFE\NFCe\Templates\" }}
 
     $xmlParam = "{xml_param}"
-    if ($xmlParam.Length -eq 44 -and (Test-Path "C:\ERPFULL\NFE\NFCe\XmlDestinatario\$xmlParam-nfe.xml")) {{
-        $xmlParam = [System.IO.File]::ReadAllText("C:\ERPFULL\NFE\NFCe\XmlDestinatario\$xmlParam-nfe.xml", [System.Text.Encoding]::UTF8)
+    if ($xmlParam.Length -eq 44) {{
+        if (Test-Path "C:\ERPFULL\NFE\NFCe\XmlDestinatario\$xmlParam-nfe.xml") {{
+            $xmlParam = [System.IO.File]::ReadAllText("C:\ERPFULL\NFE\NFCe\XmlDestinatario\$xmlParam-nfe.xml", [System.Text.Encoding]::UTF8)
+        }} elseif (Test-Path "C:\ERPFULL\NFE\XmlDestinatario\$xmlParam-nfe.xml") {{
+            $xmlParam = [System.IO.File]::ReadAllText("C:\ERPFULL\NFE\XmlDestinatario\$xmlParam-nfe.xml", [System.Text.Encoding]::UTF8)
+        }} elseif (Test-Path "C:\ERPFULL\NFE\NFCe\XmlDestinatario\$xmlParam-nfce.xml") {{
+            $xmlParam = [System.IO.File]::ReadAllText("C:\ERPFULL\NFE\NFCe\XmlDestinatario\$xmlParam-nfce.xml", [System.Text.Encoding]::UTF8)
+        }}
     }}
 
     $modelo = "{modelo}"
@@ -764,8 +770,8 @@ try {{
         }}
     }}
 
-    # spdNFCeX.ImprimirDanfce(aIdOuXML, aIdLote, aModeloDanfce, aImpressora)
-    $n.ImprimirDanfce($xmlParam, "", $modelo, "{impressora}")
+    # spdNFCeX.ImprimirDanfce(aIdLote, aXml, aModeloDanfce, aImpressora)
+    $n.ImprimirDanfce("", $xmlParam, $modelo, "{impressora}")
     Write-Host "---TECNOSPEED_SUCCESS---"
     Write-Host "DANFCE impresso com sucesso na impressora {impressora}."
 }} catch {{
@@ -830,8 +836,14 @@ try {{
     elseif (Test-Path "C:\ERPFULL\NFE\NFCe\Templates\") {{ $n.DiretorioTemplates = "C:\ERPFULL\NFE\NFCe\Templates\" }}
 
     $xmlParam = "{xml_param}"
-    if ($xmlParam.Length -eq 44 -and (Test-Path "C:\ERPFULL\NFE\NFCe\XmlDestinatario\$xmlParam-nfe.xml")) {{
-        $xmlParam = [System.IO.File]::ReadAllText("C:\ERPFULL\NFE\NFCe\XmlDestinatario\$xmlParam-nfe.xml", [System.Text.Encoding]::UTF8)
+    if ($xmlParam.Length -eq 44) {{
+        if (Test-Path "C:\ERPFULL\NFE\NFCe\XmlDestinatario\$xmlParam-nfe.xml") {{
+            $xmlParam = [System.IO.File]::ReadAllText("C:\ERPFULL\NFE\NFCe\XmlDestinatario\$xmlParam-nfe.xml", [System.Text.Encoding]::UTF8)
+        }} elseif (Test-Path "C:\ERPFULL\NFE\XmlDestinatario\$xmlParam-nfe.xml") {{
+            $xmlParam = [System.IO.File]::ReadAllText("C:\ERPFULL\NFE\XmlDestinatario\$xmlParam-nfe.xml", [System.Text.Encoding]::UTF8)
+        }} elseif (Test-Path "C:\ERPFULL\NFE\NFCe\XmlDestinatario\$xmlParam-nfce.xml") {{
+            $xmlParam = [System.IO.File]::ReadAllText("C:\ERPFULL\NFE\NFCe\XmlDestinatario\$xmlParam-nfce.xml", [System.Text.Encoding]::UTF8)
+        }}
     }}
 
     $modelo = "{modelo}"
@@ -845,9 +857,9 @@ try {{
         }}
     }}
 
-    # spdNFCeX.ExportarDanfce(aIdOuXML, aIdLote, aModeloDanfce, aFormatoExportacao, aNomeArquivo)
+    # spdNFCeX.ExportarDanfce(aIdLote, aXml, aModeloDanfce, aFormatoExportacao, aNomeArquivo)
     # Formato 1 = PDF
-    $n.ExportarDanfce($xmlParam, "", $modelo, 1, "{pdf_path}")
+    $n.ExportarDanfce("", $xmlParam, $modelo, 1, "{pdf_path}")
     Write-Host "---TECNOSPEED_SUCCESS---"
     Write-Host "DANFCE exportado para PDF em {pdf_path}"
 }} catch {{
