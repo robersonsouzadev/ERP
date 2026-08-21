@@ -51,6 +51,45 @@ export const ModalCadastroFuncionario: React.FC<ModalCadastroFuncionarioProps> =
 
   const updateField = (field: keyof Funcionario, value: any) => setForm(prev => ({ ...prev, [field]: value }));
 
+  // === Máscaras de Input ===
+  const maskTelefone = (v: string): string => {
+    const digits = v.replace(/\D/g, '').slice(0, 10);
+    if (digits.length <= 2) return digits.length ? `(${digits}` : '';
+    if (digits.length <= 6) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+  };
+
+  const maskCelular = (v: string): string => {
+    const digits = v.replace(/\D/g, '').slice(0, 11);
+    if (digits.length <= 2) return digits.length ? `(${digits}` : '';
+    if (digits.length <= 7) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+  };
+
+  const maskCep = (v: string): string => {
+    const digits = v.replace(/\D/g, '').slice(0, 8);
+    if (digits.length <= 5) return digits;
+    return `${digits.slice(0, 5)}-${digits.slice(5)}`;
+  };
+
+  const maskCpfCnpj = (v: string): string => {
+    const digits = v.replace(/\D/g, '');
+    if (digits.length <= 11) {
+      // CPF: 000.000.000-00
+      if (digits.length <= 3) return digits;
+      if (digits.length <= 6) return `${digits.slice(0, 3)}.${digits.slice(3)}`;
+      if (digits.length <= 9) return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`;
+      return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9, 11)}`;
+    }
+    // CNPJ: 00.000.000/0000-00
+    const d = digits.slice(0, 14);
+    if (d.length <= 2) return d;
+    if (d.length <= 5) return `${d.slice(0, 2)}.${d.slice(2)}`;
+    if (d.length <= 8) return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5)}`;
+    if (d.length <= 12) return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8)}`;
+    return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}`;
+  };
+
   const handleSave = async () => {
     if (!form.nome) {
       alert("O nome é obrigatório!");
@@ -151,7 +190,7 @@ export const ModalCadastroFuncionario: React.FC<ModalCadastroFuncionarioProps> =
               </div>
               <div>
                 <label className="coliseu-label">CPF/CNPJ</label>
-                <input type="text" className="coliseu-input" style={{ width: '100%', height: '36px' }} value={form.cpf_cnpj || ''} onChange={e => updateField('cpf_cnpj', e.target.value)} />
+                <input type="text" className="coliseu-input" style={{ width: '100%', height: '36px' }} placeholder="000.000.000-00" maxLength={18} value={form.cpf_cnpj || ''} onChange={e => updateField('cpf_cnpj', maskCpfCnpj(e.target.value))} />
               </div>
               <div>
                 <label className="coliseu-label">RG</label>
@@ -191,18 +230,18 @@ export const ModalCadastroFuncionario: React.FC<ModalCadastroFuncionarioProps> =
               </div>
               <div>
                 <label className="coliseu-label">Telefone</label>
-                <input type="text" className="coliseu-input" style={{ width: '100%', height: '36px' }} value={form.telefone || ''} onChange={e => updateField('telefone', e.target.value)} />
+                <input type="text" className="coliseu-input" style={{ width: '100%', height: '36px' }} placeholder="(00) 0000-0000" maxLength={15} value={form.telefone || ''} onChange={e => updateField('telefone', maskTelefone(e.target.value))} />
               </div>
               <div>
                 <label className="coliseu-label">Celular</label>
-                <input type="text" className="coliseu-input" style={{ width: '100%', height: '36px' }} value={form.celular || ''} onChange={e => updateField('celular', e.target.value)} />
+                <input type="text" className="coliseu-input" style={{ width: '100%', height: '36px' }} placeholder="(00) 00000-0000" maxLength={16} value={form.celular || ''} onChange={e => updateField('celular', maskCelular(e.target.value))} />
               </div>
 
               {renderSectionDivider('Endereço')}
               
               <div>
                 <label className="coliseu-label">CEP</label>
-                <input type="text" className="coliseu-input" style={{ width: '100%', height: '36px' }} value={form.cep || ''} onChange={e => updateField('cep', e.target.value)} />
+                <input type="text" className="coliseu-input" style={{ width: '100%', height: '36px' }} placeholder="00000-000" maxLength={9} value={form.cep || ''} onChange={e => updateField('cep', maskCep(e.target.value))} />
               </div>
               <div>
                 <label className="coliseu-label">Endereço</label>
