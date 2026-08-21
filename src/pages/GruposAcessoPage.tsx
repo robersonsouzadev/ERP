@@ -1,54 +1,21 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { PageHeader } from '../components/ui/PageHeader';
 import { Button } from '../components/ui/Button';
 import { StatusBadge } from '../components/ui/StatusBadge';
-import { Edit2, Plus, Power, PowerOff, CheckCircle2, X, Trash2 } from 'lucide-react';
-import { funcionariosService, GrupoAcesso as GrupoAcessoType, GrupoAcessoPermissao } from '../lib/funcionarios';
-
-const MODULES = [
-  'Painel Executivo',
-  'Clientes & Parceiros',
-  'Catálogo de Produtos',
-  'Caixa PDV',
-  'Vendas',
-  'Compras & Fornecedores',
-  'Estoque',
-  'Financeiro',
-  'Liquidação de Títulos',
-  'Renegociação',
-  'Contas Bancárias',
-  'DRE & Relatórios',
-  'Configurações',
-  'Usuários & Permissões'
-] as const;
-
-type ModuleName = typeof MODULES[number];
-
-type Actions = {
-  visualizar: boolean;
-  criar: boolean;
-  editar: boolean;
-  excluir: boolean;
-  especial: boolean;
-};
-
-type PermissionsMatrix = Record<ModuleName, Actions>;
-
-const defaultMatrix = (): PermissionsMatrix => {
-  const matrix: Partial<PermissionsMatrix> = {};
-  MODULES.forEach(m => {
-    matrix[m] = { visualizar: false, criar: false, editar: false, excluir: false, especial: false };
-  });
-  return matrix as PermissionsMatrix;
-};
-
-const INITIAL_GRUPOS: GrupoAcessoType[] = [
-  { id: '1', nome: 'Administrador', descricao: 'Acesso total ao sistema', is_sistema: 1, ativo: 1, percentual_max_desconto: 100, total_usuarios: 2 },
-  { id: '2', nome: 'Gerente', descricao: 'Acesso gerencial com restrições', is_sistema: 0, ativo: 1, percentual_max_desconto: 15, total_usuarios: 3 },
-];
+import { 
+  Edit2, Plus, Power, PowerOff, CheckCircle2, X, Trash2, Search, 
+  CheckSquare, Square, ChevronDown, ChevronRight, ShieldCheck, Check
+} from 'lucide-react';
+import { 
+  funcionariosService, 
+  GrupoAcesso as GrupoAcessoType, 
+  GrupoAcessoPermissao,
+  CATALOGO_PERMISSOES,
+  CategoriaPermissao
+} from '../lib/funcionarios';
 
 export const GruposAcessoPage: React.FC = () => {
-  const [grupos, setGrupos] = useState<GrupoAcessoType[]>(INITIAL_GRUPOS);
+  const [grupos, setGrupos] = useState<GrupoAcessoType[]>([]);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingGrupo, setEditingGrupo] = useState<GrupoAcessoType | null>(null);
@@ -56,67 +23,92 @@ export const GruposAcessoPage: React.FC = () => {
   // Form State
   const [nome, setNome] = useState('');
   const [descricao, setDescricao] = useState('');
-  const [percentualMaxDesconto, setPercentualMaxDesconto] = useState<number>(0);
   const [ativo, setAtivo] = useState(true);
-  const [permissoes, setPermissoes] = useState<PermissionsMatrix>(defaultMatrix());
+  const [permissoesMap, setPermissoesMap] = useState<Record<string, boolean>>({});
+  
+  // Search & UI in Modal
+  const [searchTerm, setSearchTerm] = useState('');
+  const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3500);
   };
 
+  const loadGrupos = async () => {
+    try {
+      const data = await funcionariosService.listarGrupos();
+      setGrupos(data || []);
+    } catch (e) {
+      console.error("Erro ao listar grupos:", e);
+      showToast("Erro ao carregar grupos do backend.");
+    }
+  };
+
   useEffect(() => {
-    const fetchGrupos = async () => {
-      try {
-        const data = await funcionariosService.listarGrupos();
-        if (data && data.length > 0) {
-          setGrupos(data);
-        }
-      } catch (e) {
-        console.error(e);
-        showToast("Erro ao carregar grupos, usando dados locais.");
-      }
-    };
-    fetchGrupos();
+    loadGrupos();
   }, []);
 
+  // Total de permissões no catálogo
+  const totalPermissoesCatalogo = useMemo(() => {
+    return CATALOGO_PERMISSOES.reduce((acc, cat) => acc + cat.permissoes.length, 0);
+  }, []);
+
+  // Contagem de permissões marcadas no formulário
+  const totalPermissoesMarcadas = useMemo(() => {
+    return Object.values(permissoesMap).filter(Boolean).length;
+  }, [permissoesMap]);
+
+  // Filtragem de categorias com base no termo de busca
+  const categoriasFiltradas = useMemo(() => {
+    if (!searchTerm.trim()) {
+      return CATALOGO_PERMISSOES;
+    }
+    const term = searchTerm.toLowerCase();
+    return CATALOGO_PERMISSOES.map(cat => {
+      const permsFiltradas = cat.permissoes.filter(
+        p => p.label.toLowerCase().includes(term) || p.key.toLowerCase().includes(term)
+      );
+      return {
+        ...cat,
+        permissoes: permsFiltradas
+      };
+    }).filter(cat => cat.permissoes.length > 0 || cat.nome.toLowerCase().includes(term));
+  }, [searchTerm]);
+
   const handleOpenModal = async (g?: GrupoAcessoType) => {
+    setSearchTerm('');
+    // Expande todas as categorias por padrão
+    const allExp: Record<string, boolean> = {};
+    CATALOGO_PERMISSOES.forEach(c => { allExp[c.id] = true; });
+    setExpandedCategories(allExp);
+
     if (g) {
       setEditingGrupo(g);
       setNome(g.nome);
       setDescricao(g.descricao || '');
-      setPercentualMaxDesconto(g.percentual_max_desconto || 0);
       setAtivo(g.ativo === 1);
-      
+
       try {
         const perms = await funcionariosService.listarPermissoesGrupo(g.id);
-        const matrix = defaultMatrix();
+        const map: Record<string, boolean> = {};
         if (perms && perms.length > 0) {
           perms.forEach(p => {
-            if (MODULES.includes(p.modulo as any)) {
-              matrix[p.modulo as ModuleName] = {
-                visualizar: p.pode_visualizar === 1,
-                criar: p.pode_criar === 1,
-                editar: p.pode_editar === 1,
-                excluir: p.pode_excluir === 1,
-                especial: p.pode_especial === 1,
-              };
-            }
+            map[p.permissao_key] = p.concedida === 1;
           });
         }
-        setPermissoes(matrix);
+        setPermissoesMap(map);
       } catch (e) {
-        console.error(e);
-        showToast('Erro ao carregar permissões do backend.');
-        setPermissoes(defaultMatrix()); // fallback
+        console.error("Erro ao listar permissões do grupo:", e);
+        showToast("Erro ao carregar permissões do grupo.");
+        setPermissoesMap({});
       }
     } else {
       setEditingGrupo(null);
       setNome('');
       setDescricao('');
-      setPercentualMaxDesconto(0);
       setAtivo(true);
-      setPermissoes(defaultMatrix());
+      setPermissoesMap({});
     }
     setIsModalOpen(true);
   };
@@ -126,100 +118,126 @@ export const GruposAcessoPage: React.FC = () => {
     setEditingGrupo(null);
   };
 
-  const matrixToPermissoes = (groupId: string, matrix: PermissionsMatrix): GrupoAcessoPermissao[] => {
-    return MODULES.map(m => ({
-      id: '',
-      grupo_id: groupId,
-      modulo: m,
-      recurso: m,
-      pode_visualizar: matrix[m].visualizar ? 1 : 0,
-      pode_criar: matrix[m].criar ? 1 : 0,
-      pode_editar: matrix[m].editar ? 1 : 0,
-      pode_excluir: matrix[m].excluir ? 1 : 0,
-      pode_especial: matrix[m].especial ? 1 : 0,
-      escopo_dados: 'GLOBAL',
-      pode_exportar: 0
+  const toggleCategory = (catId: string) => {
+    setExpandedCategories(prev => ({
+      ...prev,
+      [catId]: !prev[catId]
     }));
+  };
+
+  const handleTogglePermissao = (key: string) => {
+    setPermissoesMap(prev => ({
+      ...prev,
+      [key]: !prev[key]
+    }));
+  };
+
+  const handleMarcarTodos = () => {
+    const map: Record<string, boolean> = {};
+    CATALOGO_PERMISSOES.forEach(cat => {
+      cat.permissoes.forEach(p => {
+        map[p.key] = true;
+      });
+    });
+    setPermissoesMap(map);
+  };
+
+  const handleDesmarcarTodos = () => {
+    setPermissoesMap({});
+  };
+
+  const handleMarcarCategoria = (cat: CategoriaPermissao) => {
+    setPermissoesMap(prev => {
+      const next = { ...prev };
+      cat.permissoes.forEach(p => {
+        next[p.key] = true;
+      });
+      return next;
+    });
+  };
+
+  const handleDesmarcarCategoria = (cat: CategoriaPermissao) => {
+    setPermissoesMap(prev => {
+      const next = { ...prev };
+      cat.permissoes.forEach(p => {
+        next[p.key] = false;
+      });
+      return next;
+    });
   };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!nome.trim()) {
+      alert("O nome do grupo é obrigatório!");
+      return;
+    }
+
     const grupoData: GrupoAcessoType = {
       id: editingGrupo ? editingGrupo.id : '',
-      nome,
-      descricao,
+      nome: nome.trim(),
+      descricao: descricao.trim() || undefined,
       is_sistema: editingGrupo ? editingGrupo.is_sistema : 0,
       ativo: ativo ? 1 : 0,
-      percentual_max_desconto: percentualMaxDesconto,
+      percentual_max_desconto: 0,
       total_usuarios: editingGrupo ? editingGrupo.total_usuarios : 0
     };
-    const perms = matrixToPermissoes(grupoData.id, permissoes);
-    
-    try {
-      const saved = await funcionariosService.salvarGrupo(grupoData, perms);
-      setGrupos(prev => {
-        const exists = prev.find(g => g.id === saved.id);
-        if (exists) return prev.map(g => g.id === saved.id ? saved : g);
-        return [...prev, saved];
+
+    // Monta array de GrupoAcessoPermissao
+    const permsPayload: GrupoAcessoPermissao[] = [];
+    CATALOGO_PERMISSOES.forEach(cat => {
+      cat.permissoes.forEach(p => {
+        permsPayload.push({
+          grupo_id: grupoData.id,
+          permissao_key: p.key,
+          concedida: permissoesMap[p.key] ? 1 : 0
+        });
       });
-      showToast('Grupo de acesso salvo com sucesso!');
-    } catch (e) {
-      console.error(e);
-      showToast('Erro ao salvar no backend. Alterando localmente.');
-      // Local fallback
-      const id = editingGrupo ? editingGrupo.id : String(Date.now());
-      const newG = { ...grupoData, id };
-      if (editingGrupo) {
-        setGrupos(prev => prev.map(g => g.id === id ? newG : g));
-      } else {
-        setGrupos(prev => [...prev, newG]);
-      }
+    });
+
+    try {
+      await funcionariosService.salvarGrupo(grupoData, permsPayload);
+      showToast(`Grupo '${nome}' salvo com sucesso!`);
+      await loadGrupos();
+      handleCloseModal();
+    } catch (err: any) {
+      console.error("Erro ao salvar grupo:", err);
+      const msg = typeof err === 'string' ? err : err?.message || 'Erro ao salvar grupo';
+      alert(`Erro: ${msg}`);
     }
-    handleCloseModal();
   };
 
-  const handleToggleStatus = async (id: string) => {
-    const g = grupos.find(x => x.id === id);
-    if (!g) return;
+  const handleToggleStatus = async (g: GrupoAcessoType) => {
     const novoAtivo = g.ativo === 1 ? 0 : 1;
     const updatedG = { ...g, ativo: novoAtivo };
-    
+
     try {
-      let perms: GrupoAcessoPermissao[] = [];
-      try {
-        perms = await funcionariosService.listarPermissoesGrupo(id);
-      } catch (err) {}
+      const perms = await funcionariosService.listarPermissoesGrupo(g.id);
       await funcionariosService.salvarGrupo(updatedG, perms);
-      setGrupos(prev => prev.map(x => x.id === id ? updatedG : x));
-      showToast('Status do grupo alterado com sucesso!');
-    } catch (e) {
+      setGrupos(prev => prev.map(x => x.id === g.id ? updatedG : x));
+      showToast(`Status do grupo '${g.nome}' alterado com sucesso!`);
+    } catch (e: any) {
       console.error(e);
-      showToast('Erro no backend, alterado localmente!');
-      setGrupos(prev => prev.map(x => x.id === id ? updatedG : x));
+      showToast("Erro ao alterar status do grupo.");
     }
   };
 
-  const handleExcluir = async (id: string) => {
-    if (!confirm('Deseja realmente excluir este grupo?')) return;
+  const handleExcluir = async (g: GrupoAcessoType) => {
+    if (g.is_sistema === 1) {
+      alert("Grupos do sistema não podem ser excluídos!");
+      return;
+    }
+    if (!confirm(`Deseja realmente excluir o grupo '${g.nome}'?`)) return;
+
     try {
-      await funcionariosService.excluirGrupo(id);
-      setGrupos(prev => prev.filter(g => g.id !== id));
-      showToast('Grupo excluído com sucesso!');
-    } catch (e) {
+      await funcionariosService.excluirGrupo(g.id);
+      setGrupos(prev => prev.filter(x => x.id !== g.id));
+      showToast(`Grupo '${g.nome}' excluído com sucesso!`);
+    } catch (e: any) {
       console.error(e);
-      showToast('Erro ao excluir no backend, excluído localmente.');
-      setGrupos(prev => prev.filter(g => g.id !== id));
+      const msg = typeof e === 'string' ? e : e?.message || 'Erro ao excluir grupo';
+      alert(`Erro: ${msg}`);
     }
-  };
-
-  const handlePermissionChange = (module: ModuleName, action: keyof Actions, value: boolean) => {
-    setPermissoes(prev => ({
-      ...prev,
-      [module]: {
-        ...prev[module],
-        [action]: value
-      }
-    }));
   };
 
   return (
@@ -235,7 +253,7 @@ export const GruposAcessoPage: React.FC = () => {
 
       <PageHeader
         title="Grupos de Acesso & Permissões"
-        description="Configuração de perfis de acesso, módulos permitidos e alçadas de autorização."
+        description="Configuração de perfis de acesso e permissões granulares por recurso do sistema."
         breadcrumbItems={[
           { label: 'Administração', active: false },
           { label: 'Grupos de Acesso', active: true },
@@ -254,32 +272,60 @@ export const GruposAcessoPage: React.FC = () => {
               <tr>
                 <th>Nome do Grupo</th>
                 <th>Descrição</th>
-                <th style={{ textAlign: 'center' }}>Desc. Máx %</th>
                 <th style={{ textAlign: 'center' }}>Nº Usuários</th>
                 <th>Status</th>
-                <th style={{ width: '120px', textAlign: 'center' }}>Ações</th>
+                <th style={{ width: '130px', textAlign: 'center' }}>Ações</th>
               </tr>
             </thead>
             <tbody>
               {grupos.map(g => (
                 <tr key={g.id}>
-                  <td style={{ fontWeight: 500 }}>{g.nome}</td>
-                  <td style={{ color: 'var(--text-secondary)' }}>{g.descricao}</td>
-                  <td style={{ textAlign: 'center' }}>{g.percentual_max_desconto}%</td>
-                  <td style={{ textAlign: 'center' }}>{g.total_usuarios}</td>
+                  <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <ShieldCheck size={16} style={{ color: 'var(--action-primary)' }} />
+                      <span>{g.nome}</span>
+                      {g.is_sistema === 1 && (
+                        <span style={{ 
+                          fontSize: '10px', 
+                          padding: '1px 6px', 
+                          borderRadius: '4px', 
+                          backgroundColor: 'rgba(59, 130, 246, 0.1)', 
+                          color: 'var(--action-primary)',
+                          fontWeight: 600
+                        }}>
+                          SISTEMA
+                        </span>
+                      )}
+                    </div>
+                  </td>
+                  <td style={{ color: 'var(--text-secondary)' }}>{g.descricao || '—'}</td>
+                  <td style={{ textAlign: 'center', fontWeight: 500 }}>{g.total_usuarios}</td>
                   <td>
-                    <StatusBadge status={g.ativo === 1 ? 'success' : 'muted'} label={g.ativo === 1 ? 'Ativo' : 'Inativo'} />
+                    <StatusBadge 
+                      status={g.ativo === 1 ? 'success' : 'muted'} 
+                      label={g.ativo === 1 ? 'Ativo' : 'Inativo'} 
+                    />
                   </td>
                   <td style={{ textAlign: 'center' }}>
                     <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
-                      <Button variant="ghost" onClick={() => handleOpenModal(g)} title="Editar">
+                      <Button variant="ghost" onClick={() => handleOpenModal(g)} title="Editar Grupo e Permissões">
                         <Edit2 size={14} />
                       </Button>
-                      <Button variant="ghost" onClick={() => handleToggleStatus(g.id)} title={g.ativo === 1 ? 'Desativar' : 'Ativar'}>
+                      <Button 
+                        variant="ghost" 
+                        onClick={() => handleToggleStatus(g)} 
+                        title={g.ativo === 1 ? 'Desativar' : 'Ativar'}
+                        disabled={g.is_sistema === 1}
+                      >
                         {g.ativo === 1 ? <PowerOff size={14} color="var(--action-danger)" /> : <Power size={14} color="var(--status-success)" />}
                       </Button>
-                      <Button variant="ghost" onClick={() => handleExcluir(g.id)} title="Excluir">
-                        <Trash2 size={14} color="var(--action-danger)" />
+                      <Button 
+                        variant="ghost" 
+                        onClick={() => handleExcluir(g)} 
+                        title="Excluir"
+                        disabled={g.is_sistema === 1}
+                      >
+                        <Trash2 size={14} color={g.is_sistema === 1 ? 'var(--text-muted)' : 'var(--action-danger)'} />
                       </Button>
                     </div>
                   </td>
@@ -287,8 +333,8 @@ export const GruposAcessoPage: React.FC = () => {
               ))}
               {grupos.length === 0 && (
                 <tr>
-                  <td colSpan={6} style={{ textAlign: 'center', padding: '24px' }}>
-                    Nenhum grupo cadastrado.
+                  <td colSpan={5} style={{ textAlign: 'center', padding: '32px', color: 'var(--text-muted)' }}>
+                    Nenhum grupo de acesso cadastrado.
                   </td>
                 </tr>
               )}
@@ -297,7 +343,7 @@ export const GruposAcessoPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Modal */}
+      {/* Modal de Cadastro / Edição com Permissões Granulares */}
       {isModalOpen && (
         <div style={{
           position: 'fixed',
@@ -310,39 +356,79 @@ export const GruposAcessoPage: React.FC = () => {
           alignItems: 'center',
           justifyContent: 'center',
           zIndex: 'var(--z-modal)',
+          padding: '16px'
         }}>
           <div style={{
             background: 'var(--surface-1)',
-            borderRadius: 'var(--radius-md)',
+            borderRadius: 'var(--radius-lg)',
             width: '100%',
-            maxWidth: '960px',
-            maxHeight: '90vh',
+            maxWidth: '1020px',
+            maxHeight: '92vh',
             display: 'flex',
             flexDirection: 'column',
-            boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
+            boxShadow: '0 12px 40px rgba(0,0,0,0.25)',
+            border: '1px solid var(--border-subtle)'
           }}>
-            <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h2 style={{ margin: 0, fontSize: '16px', fontWeight: 600 }}>{editingGrupo ? 'Editar Grupo de Acesso' : 'Novo Grupo de Acesso'}</h2>
-              <button onClick={handleCloseModal} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
+            {/* Header do Modal */}
+            <div style={{ 
+              padding: '16px 24px', 
+              borderBottom: '1px solid var(--border-subtle)', 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center',
+              backgroundColor: 'var(--surface-2)',
+              borderTopLeftRadius: 'var(--radius-lg)',
+              borderTopRightRadius: 'var(--radius-lg)'
+            }}>
+              <div>
+                <h2 style={{ margin: 0, fontSize: '17px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                  {editingGrupo ? `Editar Grupo: ${editingGrupo.nome}` : 'Novo Grupo de Acesso'}
+                </h2>
+                <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                  Defina o nome do grupo e selecione as permissões granulares permitidas.
+                </span>
+              </div>
+              <button 
+                onClick={handleCloseModal} 
+                style={{ 
+                  background: 'none', 
+                  border: 'none', 
+                  cursor: 'pointer', 
+                  color: 'var(--text-muted)',
+                  padding: '4px',
+                  borderRadius: '4px'
+                }}
+              >
                 <X size={20} />
               </button>
             </div>
             
-            <div style={{ overflowY: 'auto', padding: '20px' }}>
-              <form id="grupo-form" onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <fieldset style={{ padding: '16px', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', margin: 0 }}>
-                  <legend style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', padding: '0 4px' }}>Dados do Grupo</legend>
-                  
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr 1fr', gap: '12px' }}>
+            {/* Conteúdo com Scroll */}
+            <div style={{ overflowY: 'auto', padding: '24px', flex: 1, display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              <form id="grupo-form" onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                
+                {/* Seção 1: Dados do Grupo */}
+                <div style={{ 
+                  padding: '16px', 
+                  border: '1px solid var(--border-subtle)', 
+                  borderRadius: 'var(--radius-md)',
+                  backgroundColor: 'var(--surface-sunken)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '12px'
+                }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '16px' }}>
                     <div>
-                      <label className="coliseu-label">Nome do Grupo *</label>
+                      <label className="coliseu-label" style={{ fontWeight: 600 }}>Nome do Grupo *</label>
                       <input 
                         type="text" 
                         className="coliseu-input" 
                         value={nome} 
                         onChange={e => setNome(e.target.value)} 
+                        placeholder="Ex: Vendedores, Operadores PDV, Financeiro"
                         required 
                         style={{ height: '38px', width: '100%' }}
+                        autoFocus
                       />
                     </div>
                     <div>
@@ -352,102 +438,301 @@ export const GruposAcessoPage: React.FC = () => {
                         className="coliseu-input" 
                         value={descricao} 
                         onChange={e => setDescricao(e.target.value)} 
-                        style={{ height: '38px', width: '100%' }}
-                      />
-                    </div>
-                    <div>
-                      <label className="coliseu-label">Desconto Máximo %</label>
-                      <input 
-                        type="number" 
-                        step="0.01" 
-                        className="coliseu-input" 
-                        value={percentualMaxDesconto} 
-                        onChange={e => setPercentualMaxDesconto(Number(e.target.value))} 
+                        placeholder="Breve resumo das atribuições deste grupo de acesso"
                         style={{ height: '38px', width: '100%' }}
                       />
                     </div>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '12px' }}>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <input 
                       type="checkbox" 
                       id="ativo-checkbox"
                       checked={ativo}
                       onChange={e => setAtivo(e.target.checked)}
+                      style={{ cursor: 'pointer', width: '16px', height: '16px' }}
                     />
-                    <label htmlFor="ativo-checkbox" style={{ fontSize: '13px', color: 'var(--text-primary)', cursor: 'pointer' }}>
-                      Grupo Ativo
+                    <label htmlFor="ativo-checkbox" style={{ fontSize: '13px', color: 'var(--text-primary)', cursor: 'pointer', fontWeight: 500 }}>
+                      Grupo Ativo (usuários vinculados poderão acessar as telas liberadas)
                     </label>
                   </div>
-                </fieldset>
+                </div>
 
+                {/* Seção 2: Permissões Granulares */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  <h3 style={{ fontSize: '14px', fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>Matriz de Permissões</h3>
-                  <div style={{ border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-                      <thead style={{ backgroundColor: 'var(--surface-2)', borderBottom: '1px solid var(--border-subtle)' }}>
-                        <tr>
-                          <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600 }}>Módulo</th>
-                          <th style={{ padding: '10px', textAlign: 'center', fontWeight: 600 }}>Visualizar</th>
-                          <th style={{ padding: '10px', textAlign: 'center', fontWeight: 600 }}>Criar</th>
-                          <th style={{ padding: '10px', textAlign: 'center', fontWeight: 600 }}>Editar</th>
-                          <th style={{ padding: '10px', textAlign: 'center', fontWeight: 600 }}>Excluir</th>
-                          <th style={{ padding: '10px', textAlign: 'center', fontWeight: 600 }}>Especial*</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {MODULES.map((modulo, index) => (
-                          <tr key={modulo} style={{ backgroundColor: index % 2 === 0 ? 'var(--surface-1)' : 'var(--surface-sunken)', borderBottom: '1px solid var(--border-subtle)' }}>
-                            <td style={{ padding: '10px 16px', fontWeight: 500 }}>{modulo}</td>
-                            <td style={{ padding: '10px', textAlign: 'center' }}>
-                              <input 
-                                type="checkbox" 
-                                checked={permissoes[modulo].visualizar}
-                                onChange={(e) => handlePermissionChange(modulo, 'visualizar', e.target.checked)}
-                              />
-                            </td>
-                            <td style={{ padding: '10px', textAlign: 'center' }}>
-                              <input 
-                                type="checkbox" 
-                                checked={permissoes[modulo].criar}
-                                onChange={(e) => handlePermissionChange(modulo, 'criar', e.target.checked)}
-                              />
-                            </td>
-                            <td style={{ padding: '10px', textAlign: 'center' }}>
-                              <input 
-                                type="checkbox" 
-                                checked={permissoes[modulo].editar}
-                                onChange={(e) => handlePermissionChange(modulo, 'editar', e.target.checked)}
-                              />
-                            </td>
-                            <td style={{ padding: '10px', textAlign: 'center' }}>
-                              <input 
-                                type="checkbox" 
-                                checked={permissoes[modulo].excluir}
-                                onChange={(e) => handlePermissionChange(modulo, 'excluir', e.target.checked)}
-                              />
-                            </td>
-                            <td style={{ padding: '10px', textAlign: 'center' }}>
-                              <input 
-                                type="checkbox" 
-                                checked={permissoes[modulo].especial}
-                                onChange={(e) => handlePermissionChange(modulo, 'especial', e.target.checked)}
-                              />
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                  <div style={{ 
+                    display: 'flex', 
+                    justifyContent: 'space-between', 
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
+                    gap: '12px'
+                  }}>
+                    <div>
+                      <h3 style={{ fontSize: '15px', fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>
+                        Módulos de Acesso e Permissões Granulares
+                      </h3>
+                      <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                        <strong>{totalPermissoesMarcadas}</strong> de <strong>{totalPermissoesCatalogo}</strong> permissões concedidas neste grupo
+                      </span>
+                    </div>
+
+                    {/* Botões Globais de Marcar/Desmarcar */}
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <Button 
+                        type="button" 
+                        variant="secondary" 
+                        onClick={handleMarcarTodos} 
+                        style={{ height: '32px', fontSize: '12px', padding: '0 10px' }}
+                      >
+                        <CheckSquare size={14} style={{ marginRight: '4px' }} />
+                        Marcar Todos
+                      </Button>
+                      <Button 
+                        type="button" 
+                        variant="secondary" 
+                        onClick={handleDesmarcarTodos} 
+                        style={{ height: '32px', fontSize: '12px', padding: '0 10px' }}
+                      >
+                        <Square size={14} style={{ marginRight: '4px' }} />
+                        Desmarcar Todos
+                      </Button>
+                    </div>
                   </div>
-                  <p style={{ fontSize: '11px', color: 'var(--text-muted)', margin: 0 }}>
-                    * Especial refere-se a ações sensíveis como: Conceder Desconto, Cancelar Venda, Autorizar Renegociação, Liberar Limite de Crédito.
-                  </p>
+
+                  {/* Barra de Busca por Palavra-Chave */}
+                  <div style={{ position: 'relative', width: '100%' }}>
+                    <Search 
+                      size={16} 
+                      style={{ 
+                        position: 'absolute', 
+                        left: '12px', 
+                        top: '50%', 
+                        transform: 'translateY(-50%)', 
+                        color: 'var(--text-muted)' 
+                      }} 
+                    />
+                    <input 
+                      type="text"
+                      className="coliseu-input"
+                      value={searchTerm}
+                      onChange={e => setSearchTerm(e.target.value)}
+                      placeholder="Buscar permissão por palavra-chave... (ex: cancelar venda, desconto, estoque, cupom, preço)"
+                      style={{ 
+                        width: '100%', 
+                        height: '40px', 
+                        paddingLeft: '38px',
+                        paddingRight: searchTerm ? '36px' : '12px',
+                        fontSize: '13px'
+                      }}
+                    />
+                    {searchTerm && (
+                      <button
+                        type="button"
+                        onClick={() => setSearchTerm('')}
+                        style={{
+                          position: 'absolute',
+                          right: '10px',
+                          top: '50%',
+                          transform: 'translateY(-50%)',
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                          color: 'var(--text-muted)'
+                        }}
+                      >
+                        <X size={16} />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Lista de Categorias e Checkboxes */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '4px' }}>
+                    {categoriasFiltradas.map(cat => {
+                      const isExpanded = expandedCategories[cat.id] ?? true;
+                      const marcadasNaCat = cat.permissoes.filter(p => permissoesMap[p.key]).length;
+
+                      return (
+                        <div 
+                          key={cat.id}
+                          style={{
+                            border: '1px solid var(--border-subtle)',
+                            borderRadius: 'var(--radius-md)',
+                            overflow: 'hidden',
+                            backgroundColor: 'var(--surface-1)'
+                          }}
+                        >
+                          {/* Header da Categoria */}
+                          <div 
+                            style={{
+                              padding: '10px 16px',
+                              backgroundColor: 'var(--surface-2)',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              cursor: 'pointer',
+                              userSelect: 'none',
+                              borderBottom: isExpanded ? '1px solid var(--border-subtle)' : 'none'
+                            }}
+                            onClick={() => toggleCategory(cat.id)}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                              <span style={{ fontSize: '15px' }}>{cat.icone}</span>
+                              <span style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text-primary)' }}>
+                                {cat.nome}
+                              </span>
+                              <span style={{ 
+                                fontSize: '11px', 
+                                padding: '2px 8px', 
+                                borderRadius: '12px', 
+                                backgroundColor: marcadasNaCat > 0 ? 'rgba(59, 130, 246, 0.15)' : 'var(--surface-sunken)',
+                                color: marcadasNaCat > 0 ? 'var(--action-primary)' : 'var(--text-muted)',
+                                fontWeight: 600
+                              }}>
+                                {marcadasNaCat} / {cat.permissoes.length}
+                              </span>
+                            </div>
+
+                            {/* Ações Rápidas por Categoria */}
+                            <div style={{ display: 'flex', gap: '6px' }} onClick={e => e.stopPropagation()}>
+                              <button
+                                type="button"
+                                onClick={() => handleMarcarCategoria(cat)}
+                                style={{
+                                  background: 'none',
+                                  border: '1px solid var(--border-subtle)',
+                                  borderRadius: '4px',
+                                  padding: '2px 8px',
+                                  fontSize: '11px',
+                                  cursor: 'pointer',
+                                  color: 'var(--text-secondary)',
+                                  backgroundColor: 'var(--surface-1)'
+                                }}
+                                title="Marcar todas desta categoria"
+                              >
+                                Marcar
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDesmarcarCategoria(cat)}
+                                style={{
+                                  background: 'none',
+                                  border: '1px solid var(--border-subtle)',
+                                  borderRadius: '4px',
+                                  padding: '2px 8px',
+                                  fontSize: '11px',
+                                  cursor: 'pointer',
+                                  color: 'var(--text-secondary)',
+                                  backgroundColor: 'var(--surface-1)'
+                                }}
+                                title="Desmarcar todas desta categoria"
+                              >
+                                Desmarcar
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Grid de Checkboxes da Categoria */}
+                          {isExpanded && (
+                            <div style={{ 
+                              padding: '14px 16px', 
+                              display: 'grid', 
+                              gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))', 
+                              gap: '10px 20px',
+                              backgroundColor: 'var(--surface-1)'
+                            }}>
+                              {cat.permissoes.map(p => {
+                                const isChecked = !!permissoesMap[p.key];
+                                return (
+                                  <label 
+                                    key={p.key}
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'flex-start',
+                                      gap: '10px',
+                                      cursor: 'pointer',
+                                      padding: '6px 8px',
+                                      borderRadius: 'var(--radius-sm)',
+                                      backgroundColor: isChecked ? 'rgba(59, 130, 246, 0.05)' : 'transparent',
+                                      transition: 'background-color 0.15s ease'
+                                    }}
+                                  >
+                                    <input 
+                                      type="checkbox"
+                                      checked={isChecked}
+                                      onChange={() => handleTogglePermissao(p.key)}
+                                      style={{ 
+                                        marginTop: '2px', 
+                                        cursor: 'pointer',
+                                        width: '16px',
+                                        height: '16px',
+                                        accentColor: 'var(--action-primary)'
+                                      }}
+                                    />
+                                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                      <span style={{ 
+                                        fontSize: '13px', 
+                                        fontWeight: isChecked ? 600 : 400,
+                                        color: isChecked ? 'var(--text-primary)' : 'var(--text-secondary)'
+                                      }}>
+                                        {p.label}
+                                      </span>
+                                      <span style={{ 
+                                        fontSize: '10px', 
+                                        color: 'var(--text-muted)', 
+                                        fontFamily: 'var(--font-family-mono)' 
+                                      }}>
+                                        {p.key}
+                                      </span>
+                                    </div>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+
+                    {categoriasFiltradas.length === 0 && (
+                      <div style={{ 
+                        textAlign: 'center', 
+                        padding: '32px', 
+                        color: 'var(--text-muted)',
+                        backgroundColor: 'var(--surface-sunken)',
+                        borderRadius: 'var(--radius-md)'
+                      }}>
+                        Nenhuma permissão encontrada para o termo "{searchTerm}".
+                      </div>
+                    )}
+                  </div>
                 </div>
               </form>
             </div>
             
-            <div style={{ padding: '16px 20px', borderTop: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'flex-end', gap: '8px', backgroundColor: 'var(--surface-2)', borderBottomLeftRadius: 'var(--radius-md)', borderBottomRightRadius: 'var(--radius-md)' }}>
-              <Button variant="secondary" type="button" onClick={handleCloseModal}>Cancelar</Button>
-              <Button variant="primary" type="submit" form="grupo-form">Salvar Grupo</Button>
+            {/* Footer do Modal */}
+            <div style={{ 
+              padding: '16px 24px', 
+              borderTop: '1px solid var(--border-subtle)', 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center',
+              backgroundColor: 'var(--surface-2)', 
+              borderBottomLeftRadius: 'var(--radius-lg)', 
+              borderBottomRightRadius: 'var(--radius-lg)' 
+            }}>
+              <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+                Total selecionado: <strong>{totalPermissoesMarcadas}</strong> permissões
+              </span>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <Button variant="secondary" type="button" onClick={handleCloseModal}>
+                  Cancelar
+                </Button>
+                <Button variant="primary" type="submit" form="grupo-form">
+                  <Check size={16} style={{ marginRight: '6px' }} />
+                  Salvar Grupo
+                </Button>
+              </div>
             </div>
           </div>
         </div>

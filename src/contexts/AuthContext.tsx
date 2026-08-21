@@ -10,7 +10,7 @@ interface AuthContextType {
   filialAtiva: string | null;
   login: (username: string, senha: string) => Promise<void>;
   logout: () => void;
-  temPermissao: (modulo: string, acao: 'visualizar' | 'criar' | 'editar' | 'excluir' | 'especial') => boolean;
+  temPermissao: (permissaoKey: string) => boolean;
   trocarFilial: (filialId: string) => void;
   loginError: string | null;
 }
@@ -59,19 +59,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.removeItem('coliseu_session');
   }, []);
 
-  const temPermissao = useCallback((modulo: string, acao: 'visualizar' | 'criar' | 'editar' | 'excluir' | 'especial'): boolean => {
-    // Admin group has everything
+  const temPermissao = useCallback((permissaoKey: string): boolean => {
     if (!funcionario) return false;
-    const perm = permissoes.find(p => p.modulo === modulo);
-    if (!perm) return false;
-    switch (acao) {
-      case 'visualizar': return perm.pode_visualizar === 1;
-      case 'criar': return perm.pode_criar === 1;
-      case 'editar': return perm.pode_editar === 1;
-      case 'excluir': return perm.pode_excluir === 1;
-      case 'especial': return perm.pode_especial === 1;
-      default: return false;
+    // Administrador tem acesso total
+    if (funcionario.username?.toLowerCase() === 'admin' || funcionario.grupo_acesso_nome === 'Administrador') {
+      return true;
     }
+    return permissoes.some(p => p.permissao_key === permissaoKey && p.concedida === 1);
   }, [funcionario, permissoes]);
 
   const trocarFilial = useCallback((filialId: string) => {

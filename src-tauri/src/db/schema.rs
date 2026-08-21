@@ -1569,18 +1569,12 @@ pub fn create_tables(conn: &Connection) -> Result<()> {
             x_version INTEGER NOT NULL DEFAULT 1,
             is_deleted INTEGER NOT NULL DEFAULT 0,
             grupo_id TEXT NOT NULL,
-            modulo TEXT NOT NULL,
-            recurso TEXT NOT NULL,
-            pode_visualizar INTEGER DEFAULT 0,
-            pode_criar INTEGER DEFAULT 0,
-            pode_editar INTEGER DEFAULT 0,
-            pode_excluir INTEGER DEFAULT 0,
-            pode_especial INTEGER DEFAULT 0,
-            escopo_dados TEXT DEFAULT 'FILIAL',
-            pode_exportar INTEGER DEFAULT 0
+            permissao_key TEXT NOT NULL,
+            concedida INTEGER NOT NULL DEFAULT 0
         );
         CREATE INDEX IF NOT EXISTS idx_grupos_perm_sync ON grupos_acesso_permissoes(x_sync_status, updated_at);
         CREATE INDEX IF NOT EXISTS idx_grupos_perm_grupo ON grupos_acesso_permissoes(grupo_id);
+        CREATE INDEX IF NOT EXISTS idx_grupos_perm_key ON grupos_acesso_permissoes(grupo_id, permissao_key);
         ",
     )?;
 
@@ -1591,6 +1585,7 @@ pub fn create_tables(conn: &Connection) -> Result<()> {
     migrate_filiais_nfce_config_columns(conn)?;
     migrate_filiais_nfse_config_columns(conn)?;
     migrate_audit_logs_remove_fk(conn)?;
+    migrate_grupos_permissoes_granular(conn)?;
 
     info!("Schema DDL executado com sucesso. Todas as 65 tabelas criadas e migradas.");
 
@@ -1879,6 +1874,187 @@ fn migrate_audit_logs_remove_fk(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+fn migrate_grupos_permissoes_granular(conn: &Connection) -> Result<()> {
+    let table_sql: String = conn
+        .query_row(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='grupos_acesso_permissoes'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap_or_default();
+
+    if table_sql.contains("modulo") || !table_sql.contains("permissao_key") {
+        info!("Migrando grupos_acesso_permissoes para estrutura granular...");
+        conn.execute_batch(
+            "
+            DROP TABLE IF EXISTS grupos_acesso_permissoes;
+            CREATE TABLE IF NOT EXISTS grupos_acesso_permissoes (
+                id TEXT PRIMARY KEY NOT NULL,
+                device_id TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                x_sync_status TEXT NOT NULL DEFAULT 'pending',
+                x_version INTEGER NOT NULL DEFAULT 1,
+                is_deleted INTEGER NOT NULL DEFAULT 0,
+                grupo_id TEXT NOT NULL,
+                permissao_key TEXT NOT NULL,
+                concedida INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE INDEX IF NOT EXISTS idx_grupos_perm_sync ON grupos_acesso_permissoes(x_sync_status, updated_at);
+            CREATE INDEX IF NOT EXISTS idx_grupos_perm_grupo ON grupos_acesso_permissoes(grupo_id);
+            CREATE INDEX IF NOT EXISTS idx_grupos_perm_key ON grupos_acesso_permissoes(grupo_id, permissao_key);
+            "
+        )?;
+
+        // Re-seeda as permissões para o grupo Administrador
+        let now = chrono::Utc::now().to_rfc3339();
+        let device_id = "migration-system";
+        seed_granular_permissions_for_group(conn, "grupo-admin-001", device_id, &now)?;
+        info!("Migração granular de permissões concluída com sucesso.");
+    }
+
+    Ok(())
+}
+
+pub const ALL_PERMISSOES_CATALOG: &[&str] = &[
+    // PDV
+    "pdv.abrir_caixa",
+    "pdv.fechar_caixa",
+    "pdv.vender",
+    "pdv.cancelar_venda",
+    "pdv.aplicar_desconto",
+    "pdv.permitir_desconto_acima_alcada",
+    "pdv.sangria",
+    "pdv.suprimento",
+    "pdv.venda_contingencia",
+    "pdv.retransmitir_contingencia",
+    "pdv.venda_crediario",
+    // Vendas & Pedidos
+    "vendas.criar_pedido",
+    "vendas.editar_pedido",
+    "vendas.excluir_pedido",
+    "vendas.aprovar_pedido",
+    "vendas.faturar_nfe",
+    "vendas.emitir_acobertamento",
+    "vendas.alterar_preco_venda",
+    "vendas.alterar_vendedor",
+    "vendas.permitir_desconto_acima_alcada",
+    "vendas.reimprimir_danfe",
+    // Pré-Venda & Condicional
+    "prevenda.emitir_comanda",
+    "condicional.emitir_malinha",
+    "condicional.faturar",
+    "condicional.gerar_vale",
+    "condicional.devolver",
+    // Clientes & Parceiros
+    "clientes.cadastrar",
+    "clientes.editar",
+    "clientes.excluir",
+    "clientes.alterar_limite_credito",
+    "clientes.bloquear",
+    "clientes.alterar_tipo",
+    "clientes.consultar_receita",
+    // Catálogo & Produtos
+    "produtos.cadastrar",
+    "produtos.editar",
+    "produtos.excluir",
+    "produtos.ver_custo",
+    "produtos.alterar_preco",
+    "produtos.alterar_preco_lote",
+    "produtos.alterar_tributacao",
+    "produtos.gerar_etiquetas",
+    // Estoque & Depósitos
+    "estoque.ver_saldos",
+    "estoque.ajustar",
+    "estoque.ajustar_lote",
+    "estoque.transferir",
+    "estoque.balanco_executar",
+    "estoque.balanco_ajustar",
+    "estoque.entrada_mercadoria",
+    "estoque.categorias_marcas",
+    // Financeiro Receber
+    "fin_receber.visualizar",
+    "fin_receber.lancar",
+    "fin_receber.liquidar",
+    "fin_receber.estornar",
+    "fin_receber.renegociar",
+    "fin_receber.excluir",
+    "fin_receber.emitir_recibo",
+    // Financeiro Pagar
+    "fin_pagar.visualizar",
+    "fin_pagar.lancar",
+    "fin_pagar.liquidar",
+    "fin_pagar.retencoes",
+    "fin_pagar.excluir",
+    // Financeiro Geral
+    "fin.caixas_gerir",
+    "fin.bancos_gerir",
+    "fin.ofx_importar",
+    "fin.dre_visualizar",
+    "fin.fluxo_caixa",
+    "fin.pix_boleto",
+    // Fiscal NF-e
+    "fiscal.nfe_emitir",
+    "fiscal.nfe_cancelar",
+    "fiscal.nfe_cce",
+    "fiscal.nfe_inutilizar",
+    "fiscal.nfe_configurar",
+    "fiscal.xml_exportar",
+    // Fiscal NFC-e
+    "fiscal.nfce_cancelar",
+    "fiscal.nfce_inutilizar",
+    "fiscal.nfce_sync_contingencia",
+    "fiscal.nfce_configurar",
+    // Fiscal MDF-e
+    "fiscal.mdfe_emitir",
+    "fiscal.mdfe_encerrar",
+    "fiscal.mdfe_cancelar",
+    "fiscal.mdfe_condutor",
+    // Fiscal Matriz & SPED
+    "fiscal.regras_tributarias",
+    "fiscal.cfop_gerir",
+    "fiscal.sped_gerar",
+    // Compras & Fornecedores
+    "compras.criar_cotacao",
+    "compras.aprovar_pedido",
+    "compras.xml_entrada",
+    "compras.mde_manifestar",
+    "compras.alterar_preco_compra",
+    // Ordens de Serviço
+    "os.criar",
+    "os.editar",
+    "os.concluir",
+    "os.faturar",
+    // Comissões & Metas
+    "comissoes.configurar_regras",
+    "comissoes.pagar",
+    "comissoes.editar_metas",
+    // Administração
+    "admin.configuracoes_gerais",
+    "admin.usuarios_gerir",
+    "admin.grupos_gerir",
+    "admin.alterar_senha",
+    "admin.audit_visualizar",
+    "admin.ia_configurar",
+    "admin.whatsapp_configurar",
+    "admin.backup",
+    "admin.series_fiscais",
+];
+
+fn seed_granular_permissions_for_group(conn: &Connection, grupo_id: &str, device_id: &str, now: &str) -> Result<()> {
+    for perm_key in ALL_PERMISSOES_CATALOG {
+        let perm_id = uuid::Uuid::new_v4().to_string();
+        conn.execute(
+            "INSERT OR IGNORE INTO grupos_acesso_permissoes (
+                id, device_id, created_at, updated_at, x_sync_status, x_version, is_deleted,
+                grupo_id, permissao_key, concedida
+            ) VALUES (?1, ?2, ?3, ?3, 'pending', 1, 0, ?4, ?5, 1)",
+            rusqlite::params![perm_id, device_id, now, grupo_id, perm_key],
+        )?;
+    }
+    Ok(())
+}
+
 fn seed_admin_user(conn: &Connection) -> Result<()> {
     // Verifica se já existe algum funcionário
     let count: i64 = conn.query_row("SELECT COUNT(*) FROM funcionarios", [], |row| row.get(0)).unwrap_or(0);
@@ -1886,7 +2062,7 @@ fn seed_admin_user(conn: &Connection) -> Result<()> {
         return Ok(());
     }
 
-    info!("Seeding grupo de acesso e usuário admin padrão...");
+    info!("Seeding grupo de acesso e usuário admin padrão com permissões granulares...");
     let now = chrono::Utc::now().to_rfc3339();
     let device_id = "seed-system";
 
@@ -1900,36 +2076,20 @@ fn seed_admin_user(conn: &Connection) -> Result<()> {
         rusqlite::params![grupo_id, device_id, now, "Administrador", "Acesso total ao sistema"],
     )?;
 
-    let modulos = vec![
-        "Painel Executivo", "Clientes & Parceiros", "Catálogo de Produtos", "Caixa PDV",
-        "Vendas", "Pré-Venda & Balcão", "Compras & Fornecedores", "Entrada XML NF-e",
-        "Estoque & Saldos", "Financeiro", "Contas Bancárias", "DRE & Relatórios",
-        "Configurações", "Usuários & Permissões", "SPED & Fiscal", "Comissões & Metas",
-        "Auditoria & Logs"
-    ];
+    // 2. Seeda todas as permissões granulares
+    seed_granular_permissions_for_group(conn, grupo_id, device_id, &now)?;
 
-    for modulo in modulos {
-        let perm_id = uuid::Uuid::new_v4().to_string();
-        conn.execute(
-            "INSERT OR IGNORE INTO grupos_acesso_permissoes (
-                id, device_id, created_at, updated_at, x_sync_status, x_version, is_deleted,
-                grupo_id, modulo, recurso, pode_visualizar, pode_criar, pode_editar, pode_excluir, pode_especial, escopo_dados, pode_exportar
-            ) VALUES (?1, ?2, ?3, ?3, 'pending', 1, 0, ?4, ?5, ?6, 1, 1, 1, 1, 1, 'TODOS', 1)",
-            rusqlite::params![perm_id, device_id, now, grupo_id, modulo, "*"],
-        )?;
-    }
-
-    // 2. Criar senha hash argon2
+    // 3. Criar senha hash argon2
     use argon2::{Argon2, PasswordHasher, password_hash::{SaltString, rand_core::OsRng}};
     let salt = SaltString::generate(&mut OsRng);
     let argon2 = Argon2::default();
     let hash = argon2.hash_password(b"98683818", &salt)
         .map_err(|e| rusqlite::Error::InvalidParameterName(e.to_string()))?.to_string();
 
-    // 3. Pegar a primeira empresa ou usar default
+    // 4. Pegar a primeira empresa ou usar default
     let empresa_id: String = conn.query_row("SELECT id FROM empresas LIMIT 1", [], |row| row.get(0)).unwrap_or_else(|_| "default".to_string());
     
-    // 4. Criar funcionario admin
+    // 5. Criar funcionario admin
     let func_id = uuid::Uuid::new_v4().to_string();
     conn.execute(
         "INSERT INTO funcionarios (

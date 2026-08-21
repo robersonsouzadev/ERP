@@ -228,9 +228,9 @@ pub async fn listar_permissoes_grupo(state: State<'_, DbState>, grupo_id: String
 }
 
 #[tauri::command]
-pub async fn verificar_permissao(state: State<'_, DbState>, funcionario_id: String, modulo: String, acao: String) -> Result<bool, String> {
+pub async fn verificar_permissao(state: State<'_, DbState>, funcionario_id: String, permissao_key: String) -> Result<bool, String> {
     let conn = state.conn.lock().unwrap();
-    rbac::verificar_permissao(&conn, &funcionario_id, &modulo, &acao)
+    rbac::verificar_permissao(&conn, &funcionario_id, &permissao_key)
 }
 
 #[tauri::command]

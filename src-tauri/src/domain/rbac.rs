@@ -92,17 +92,10 @@ pub struct GrupoAcesso {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GrupoAcessoPermissao {
-    pub id: String,
+    pub id: Option<String>,
     pub grupo_id: String,
-    pub modulo: String,
-    pub recurso: String,
-    pub pode_visualizar: i64,
-    pub pode_criar: i64,
-    pub pode_editar: i64,
-    pub pode_excluir: i64,
-    pub pode_especial: i64,
-    pub escopo_dados: String,
-    pub pode_exportar: i64,
+    pub permissao_key: String,
+    pub concedida: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -604,10 +597,10 @@ pub fn salvar_grupo_acesso(conn: &Connection, device_id: &str, grupo: &GrupoAces
     conn.execute("DELETE FROM grupos_acesso_permissoes WHERE grupo_id = ?1", params![&id]).map_err(|e| e.to_string())?;
 
     for p in permissoes {
-        let p_id = Uuid::new_v4().to_string();
-        conn.execute("INSERT INTO grupos_acesso_permissoes (id, device_id, created_at, updated_at, x_sync_status, x_version, is_deleted, grupo_id, modulo, recurso, pode_visualizar, pode_criar, pode_editar, pode_excluir, pode_especial, escopo_dados, pode_exportar)
-            VALUES (?1, ?2, ?3, ?3, 'pending', 1, 0, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)", 
-        params![p_id, device_id, now, &id, p.modulo, p.recurso, p.pode_visualizar, p.pode_criar, p.pode_editar, p.pode_excluir, p.pode_especial, p.escopo_dados, p.pode_exportar]).map_err(|e| e.to_string())?;
+        let p_id = p.id.clone().unwrap_or_else(|| Uuid::new_v4().to_string());
+        conn.execute("INSERT INTO grupos_acesso_permissoes (id, device_id, created_at, updated_at, x_sync_status, x_version, is_deleted, grupo_id, permissao_key, concedida)
+            VALUES (?1, ?2, ?3, ?3, 'pending', 1, 0, ?4, ?5, ?6)", 
+        params![p_id, device_id, now, &id, p.permissao_key, p.concedida]).map_err(|e| e.to_string())?;
     }
 
     let mut res = grupo.clone();
@@ -627,12 +620,13 @@ pub fn excluir_grupo_acesso(conn: &Connection, grupo_id: &str) -> Result<(), Str
 }
 
 pub fn listar_permissoes_grupo(conn: &Connection, grupo_id: &str) -> Result<Vec<GrupoAcessoPermissao>, String> {
-    let mut stmt = conn.prepare("SELECT id, grupo_id, modulo, recurso, pode_visualizar, pode_criar, pode_editar, pode_excluir, pode_especial, escopo_dados, pode_exportar FROM grupos_acesso_permissoes WHERE grupo_id = ?1 AND is_deleted = 0").map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare("SELECT id, grupo_id, permissao_key, concedida FROM grupos_acesso_permissoes WHERE grupo_id = ?1 AND is_deleted = 0").map_err(|e| e.to_string())?;
     let iter = stmt.query_map(params![grupo_id], |r| {
         Ok(GrupoAcessoPermissao {
-            id: r.get(0)?, grupo_id: r.get(1)?, modulo: r.get(2)?, recurso: r.get(3)?,
-            pode_visualizar: r.get(4)?, pode_criar: r.get(5)?, pode_editar: r.get(6)?,
-            pode_excluir: r.get(7)?, pode_especial: r.get(8)?, escopo_dados: r.get(9)?, pode_exportar: r.get(10)?
+            id: Some(r.get(0)?),
+            grupo_id: r.get(1)?,
+            permissao_key: r.get(2)?,
+            concedida: r.get(3)?,
         })
     }).map_err(|e| e.to_string())?;
 
@@ -643,7 +637,7 @@ pub fn listar_permissoes_grupo(conn: &Connection, grupo_id: &str) -> Result<Vec<
     Ok(perms)
 }
 
-pub fn verificar_permissao(conn: &Connection, funcionario_id: &str, modulo: &str, acao: &str) -> Result<bool, String> {
+pub fn verificar_permissao(conn: &Connection, funcionario_id: &str, permissao_key: &str) -> Result<bool, String> {
     let grupo_id: Option<String> = conn.query_row("SELECT grupo_acesso_id FROM funcionarios WHERE id = ?1 AND is_deleted = 0", params![funcionario_id], |r| r.get(0)).optional().map_err(|e| e.to_string())?.flatten();
     
     if let Some(gid) = grupo_id {
@@ -652,18 +646,7 @@ pub fn verificar_permissao(conn: &Connection, funcionario_id: &str, modulo: &str
             return Ok(true);
         }
 
-        let campo = match acao {
-            "visualizar" => "pode_visualizar",
-            "criar" => "pode_criar",
-            "editar" => "pode_editar",
-            "excluir" => "pode_excluir",
-            "especial" => "pode_especial",
-            "exportar" => "pode_exportar",
-            _ => return Ok(false)
-        };
-
-        let query = format!("SELECT {} FROM grupos_acesso_permissoes WHERE grupo_id = ?1 AND modulo = ?2 AND is_deleted = 0", campo);
-        let allowed: i64 = conn.query_row(&query, params![gid, modulo], |r| r.get(0)).unwrap_or(0);
+        let allowed: i64 = conn.query_row("SELECT concedida FROM grupos_acesso_permissoes WHERE grupo_id = ?1 AND permissao_key = ?2 AND is_deleted = 0", params![gid, permissao_key], |r| r.get(0)).unwrap_or(0);
         Ok(allowed == 1)
     } else {
         Ok(false)
