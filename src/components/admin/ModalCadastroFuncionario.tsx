@@ -33,17 +33,27 @@ export const ModalCadastroFuncionario: React.FC<ModalCadastroFuncionarioProps> =
   const [senhaPlain, setSenhaPlain] = useState('');
   const [confirmarSenha, setConfirmarSenha] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [listaGrupos, setListaGrupos] = useState<Array<{ id: string; nome: string }>>(gruposAcesso);
 
   useEffect(() => {
     if (isOpen) {
       if (funcionario) {
         setForm(funcionario);
       } else {
-        setForm(createEmptyFuncionario('default')); // Idealmente pegaria empresa_id do auth context
+        setForm(createEmptyFuncionario('default'));
       }
       setSenhaPlain('');
       setConfirmarSenha('');
       setActiveTab(TABS[0].key);
+
+      // Carrega grupos de acesso do backend
+      funcionariosService.listarGrupos().then(grps => {
+        if (grps && grps.length > 0) {
+          setListaGrupos(grps.map(g => ({ id: g.id, nome: g.nome })));
+        }
+      }).catch(err => {
+        console.error("Erro ao carregar grupos para o modal de funcionário:", err);
+      });
     }
   }, [isOpen, funcionario]);
 
@@ -347,8 +357,8 @@ export const ModalCadastroFuncionario: React.FC<ModalCadastroFuncionarioProps> =
                   <div>
                     <label className="coliseu-label">Grupo de Acesso</label>
                     <select className="coliseu-input" style={{ width: '100%', height: '36px' }} value={form.grupo_acesso_id || ''} onChange={e => updateField('grupo_acesso_id', e.target.value)}>
-                      <option value="">Selecione...</option>
-                      {gruposAcesso.map(g => (
+                      <option value="">Selecione um Grupo de Acesso...</option>
+                      {listaGrupos.map(g => (
                         <option key={g.id} value={g.id}>{g.nome}</option>
                       ))}
                     </select>

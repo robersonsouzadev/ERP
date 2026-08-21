@@ -279,7 +279,12 @@ export const GruposAcessoPage: React.FC = () => {
             </thead>
             <tbody>
               {grupos.map(g => (
-                <tr key={g.id}>
+                <tr 
+                  key={g.id}
+                  style={{ cursor: 'pointer' }}
+                  onDoubleClick={() => handleOpenModal(g)}
+                  title="Dê um duplo clique para editar este grupo"
+                >
                   <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <ShieldCheck size={16} style={{ color: 'var(--action-primary)' }} />
@@ -307,26 +312,37 @@ export const GruposAcessoPage: React.FC = () => {
                     />
                   </td>
                   <td style={{ textAlign: 'center' }}>
-                    <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
-                      <Button variant="ghost" onClick={() => handleOpenModal(g)} title="Editar Grupo e Permissões">
-                        <Edit2 size={14} />
-                      </Button>
-                      <Button 
-                        variant="ghost" 
-                        onClick={() => handleToggleStatus(g)} 
-                        title={g.ativo === 1 ? 'Desativar' : 'Ativar'}
+                    <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); handleOpenModal(g); }}
+                        className="coliseu-btn coliseu-btn--secondary coliseu-btn--sm"
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', height: '30px', padding: '0 10px', fontSize: '12px' }}
+                        title="Editar Grupo e Permissões"
+                      >
+                        <Edit2 size={13} style={{ color: 'var(--action-primary)' }} />
+                        <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>Editar</span>
+                      </button>
+                      <button 
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); handleToggleStatus(g); }} 
+                        className="coliseu-btn coliseu-btn--secondary coliseu-btn--sm"
+                        style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '30px', height: '30px', padding: 0 }}
+                        title={g.ativo === 1 ? 'Desativar Grupo' : 'Ativar Grupo'}
                         disabled={g.is_sistema === 1}
                       >
-                        {g.ativo === 1 ? <PowerOff size={14} color="var(--action-danger)" /> : <Power size={14} color="var(--status-success)" />}
-                      </Button>
-                      <Button 
-                        variant="ghost" 
-                        onClick={() => handleExcluir(g)} 
-                        title="Excluir"
+                        {g.ativo === 1 ? <PowerOff size={13} style={{ color: 'var(--action-danger)' }} /> : <Power size={13} style={{ color: 'var(--status-success)' }} />}
+                      </button>
+                      <button 
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); handleExcluir(g); }} 
+                        className="coliseu-btn coliseu-btn--secondary coliseu-btn--sm"
+                        style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '30px', height: '30px', padding: 0 }}
+                        title="Excluir Grupo"
                         disabled={g.is_sistema === 1}
                       >
-                        <Trash2 size={14} color={g.is_sistema === 1 ? 'var(--text-muted)' : 'var(--action-danger)'} />
-                      </Button>
+                        <Trash2 size={13} style={{ color: g.is_sistema === 1 ? 'var(--text-muted)' : 'var(--action-danger)' }} />
+                      </button>
                     </div>
                   </td>
                 </tr>

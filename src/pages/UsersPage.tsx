@@ -13,6 +13,7 @@ export const UsersPage: React.FC = () => {
   const empresaId = authFunc?.empresa_id || 'default';
 
   const [funcionarios, setFuncionarios] = useState<Funcionario[]>([]);
+  const [grupos, setGrupos] = useState<Array<{ id: string; nome: string }>>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [tipoFilter, setTipoFilter] = useState('Todos');
   const [statusFilter, setStatusFilter] = useState('Todos');
@@ -32,6 +33,15 @@ export const UsersPage: React.FC = () => {
     } catch (error) {
       console.error("Erro ao carregar funcionários:", error);
       setFuncionarios([]);
+    }
+
+    try {
+      const grps = await funcionariosService.listarGrupos();
+      if (grps) {
+        setGrupos(grps.map(g => ({ id: g.id, nome: g.nome })));
+      }
+    } catch (error) {
+      console.error("Erro ao carregar grupos:", error);
     }
   }, [empresaId]);
 
@@ -255,6 +265,7 @@ export const UsersPage: React.FC = () => {
         onClose={() => setIsModalOpen(false)}
         funcionario={selectedFuncionario}
         onSaved={handleModalSaved}
+        gruposAcesso={grupos}
       />
     </div>
   );
