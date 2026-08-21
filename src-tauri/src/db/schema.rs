@@ -1574,7 +1574,6 @@ pub fn create_tables(conn: &Connection) -> Result<()> {
         );
         CREATE INDEX IF NOT EXISTS idx_grupos_perm_sync ON grupos_acesso_permissoes(x_sync_status, updated_at);
         CREATE INDEX IF NOT EXISTS idx_grupos_perm_grupo ON grupos_acesso_permissoes(grupo_id);
-        CREATE INDEX IF NOT EXISTS idx_grupos_perm_key ON grupos_acesso_permissoes(grupo_id, permissao_key);
         ",
     )?;
 
@@ -1911,6 +1910,11 @@ fn migrate_grupos_permissoes_granular(conn: &Connection) -> Result<()> {
         let device_id = "migration-system";
         seed_granular_permissions_for_group(conn, "grupo-admin-001", device_id, &now)?;
         info!("Migração granular de permissões concluída com sucesso.");
+    } else {
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_grupos_perm_key ON grupos_acesso_permissoes(grupo_id, permissao_key)",
+            [],
+        )?;
     }
 
     Ok(())
