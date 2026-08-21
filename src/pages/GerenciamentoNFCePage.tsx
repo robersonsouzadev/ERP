@@ -680,261 +680,79 @@ export const GerenciamentoNFCePage: React.FC = () => {
           {/* ========================================================================= */}
           {activeTab === 'PRINCIPAL' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {/* Seletor de Modo de Operação Fiscal NFC-e */}
-              <div style={{
-                padding: '12px 14px',
-                backgroundColor: config.modoOperacao === 'TECNOSPEED' ? 'rgba(16, 185, 129, 0.08)' : config.modoOperacao === 'ACBR' ? 'rgba(59, 130, 246, 0.08)' : config.modoOperacao === 'WEBSERVICE' ? 'rgba(16, 185, 129, 0.08)' : 'rgba(245, 158, 11, 0.08)',
-                border: `1px solid ${config.modoOperacao === 'TECNOSPEED' ? 'rgba(16, 185, 129, 0.4)' : config.modoOperacao === 'ACBR' ? 'rgba(59, 130, 246, 0.4)' : config.modoOperacao === 'WEBSERVICE' ? 'rgba(16, 185, 129, 0.35)' : 'rgba(245, 158, 11, 0.35)'}`,
-                borderRadius: '8px',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '10px',
-                marginBottom: '4px'
-              }}>
+              {/* Banner do Motor Fiscal TecnoSpeed NFC-e */}
+              <div
+                style={{
+                  padding: '10px 14px',
+                  backgroundColor: 'var(--surface-2)',
+                  borderRadius: '6px',
+                  border: '1px dashed #10b981',
+                  marginBottom: '10px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '8px',
+                }}
+              >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '12px', fontWeight: 800, color: config.modoOperacao === 'TECNOSPEED' ? '#10b981' : config.modoOperacao === 'ACBR' ? '#3b82f6' : config.modoOperacao === 'WEBSERVICE' ? '#10b981' : '#f59e0b' }}>
-                    MODO DE OPERAÇÃO FISCAL DA NFC-e (PDV):
-                  </span>
-                  <span style={{ fontSize: '11px', fontWeight: 700, padding: '2px 10px', borderRadius: '12px', backgroundColor: config.modoOperacao === 'TECNOSPEED' ? '#10b981' : config.modoOperacao === 'ACBR' ? '#3b82f6' : config.modoOperacao === 'WEBSERVICE' ? '#10b981' : '#f59e0b', color: '#fff' }}>
-                    {config.modoOperacao === 'TECNOSPEED' ? '⚡ TECNOSPEED COMPONENTE ATIVO (LICENÇA INCLUSA - R$ 0,00)' : config.modoOperacao === 'ACBR' ? '⚡ PROJETO ACBR ATIVO' : config.modoOperacao === 'WEBSERVICE' ? '🌐 WEBSERVICE NATIVO' : '🟡 MODO TREINAMENTO ATIVO'}
-                  </span>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr 1fr 1fr', gap: '8px' }}>
-                  {/* Opção 1: TecnoSpeed */}
-                  <label
-                    style={{
-                      display: 'flex',
-                      alignItems: 'flex-start',
-                      gap: '8px',
-                      padding: '8px 10px',
-                      borderRadius: '6px',
-                      backgroundColor: config.modoOperacao === 'TECNOSPEED' ? 'var(--surface-3)' : 'transparent',
-                      border: `1px solid ${config.modoOperacao === 'TECNOSPEED' ? '#10b981' : 'var(--border-default)'}`,
-                      cursor: 'pointer'
-                    }}
-                  >
-                    <input
-                      type="radio"
-                      name="nfce_modo_operacao"
-                      checked={config.modoOperacao === 'TECNOSPEED'}
-                      onChange={() => setConfig({ ...config, modoOperacao: 'TECNOSPEED' })}
-                      style={{ marginTop: '2px' }}
-                    />
-                    <div>
-                      <div style={{ fontSize: '12px', fontWeight: 700, color: '#10b981' }}>
-                        ⚡ TecnoSpeed (Recomendado)
-                      </div>
-                      <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                        Componente Desktop / Manager Local (:8081 / TX2). Usa a licença que você já possui.
-                      </div>
-                    </div>
-                  </label>
-
-                  {/* Opção 2: ACBr */}
-                  <label
-                    style={{
-                      display: 'flex',
-                      alignItems: 'flex-start',
-                      gap: '8px',
-                      padding: '8px 10px',
-                      borderRadius: '6px',
-                      backgroundColor: config.modoOperacao === 'ACBR' ? 'var(--surface-3)' : 'transparent',
-                      border: `1px solid ${config.modoOperacao === 'ACBR' ? '#3b82f6' : 'var(--border-default)'}`,
-                      cursor: 'pointer'
-                    }}
-                  >
-                    <input
-                      type="radio"
-                      name="nfce_modo_operacao"
-                      checked={config.modoOperacao === 'ACBR'}
-                      onChange={() => setConfig({ ...config, modoOperacao: 'ACBR' })}
-                      style={{ marginTop: '2px' }}
-                    />
-                    <div>
-                      <div style={{ fontSize: '12px', fontWeight: 700, color: '#3b82f6' }}>
-                        🇧🇷 Projeto ACBr
-                      </div>
-                      <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                        Usa o ACBrMonitorPLUS via TCP Socket local (Porta 3434).
-                      </div>
-                    </div>
-                  </label>
-
-                  {/* Opção 3: Treinamento */}
-                  <label
-                    style={{
-                      display: 'flex',
-                      alignItems: 'flex-start',
-                      gap: '8px',
-                      padding: '8px 10px',
-                      borderRadius: '6px',
-                      backgroundColor: config.modoOperacao === 'TREINAMENTO' ? 'var(--surface-3)' : 'transparent',
-                      border: `1px solid ${config.modoOperacao === 'TREINAMENTO' ? '#f59e0b' : 'var(--border-default)'}`,
-                      cursor: 'pointer'
-                    }}
-                  >
-                    <input
-                      type="radio"
-                      name="nfce_modo_operacao"
-                      checked={config.modoOperacao === 'TREINAMENTO'}
-                      onChange={() => setConfig({ ...config, modoOperacao: 'TREINAMENTO' })}
-                      style={{ marginTop: '2px' }}
-                    />
-                    <div>
-                      <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                        🟡 Treinamento / PDV
-                      </div>
-                      <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                        Treina caixas e testa impressoras térmicas sem envio ao fisco.
-                      </div>
-                    </div>
-                  </label>
-
-                  {/* Opção 4: WebService Nativo */}
-                  <label
-                    style={{
-                      display: 'flex',
-                      alignItems: 'flex-start',
-                      gap: '8px',
-                      padding: '8px 10px',
-                      borderRadius: '6px',
-                      backgroundColor: config.modoOperacao === 'WEBSERVICE' ? 'var(--surface-3)' : 'transparent',
-                      border: `1px solid ${config.modoOperacao === 'WEBSERVICE' ? '#10b981' : 'var(--border-default)'}`,
-                      cursor: 'pointer'
-                    }}
-                  >
-                    <input
-                      type="radio"
-                      name="nfce_modo_operacao"
-                      checked={config.modoOperacao === 'WEBSERVICE'}
-                      onChange={() => setConfig({ ...config, modoOperacao: 'WEBSERVICE' })}
-                      style={{ marginTop: '2px' }}
-                    />
-                    <div>
-                      <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                        🌐 WebService Direto
-                      </div>
-                      <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                        Conecta direto na SEFAZ via mTLS nativo e QR-Code CSC.
-                      </div>
-                    </div>
-                  </label>
-                </div>
-
-                {/* Sub-painel TecnoSpeed quando selecionado */}
-                {config.modoOperacao === 'TECNOSPEED' && (
-                  <div style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '10px',
-                    padding: '10px 14px',
-                    backgroundColor: 'var(--surface-2)',
-                    borderRadius: '6px',
-                    border: '1px dashed #10b981',
-                    marginTop: '2px'
-                  }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: '11.5px', fontWeight: 800, color: '#10b981' }}>
-                        ⚡ MOTOR FISCAL: TECNOSPEED COMPONENTE DESKTOP NFC-e (spdNFCeX)
-                      </span>
-                      <Button
-                        variant="primary"
-                        size="sm"
-                        onClick={handleTestarConexaoTecnoSpeed}
-                        style={{ height: '26px', fontSize: '11px', padding: '0 12px', backgroundColor: '#10b981' }}
-                      >
-                        ⚡ Testar Licença & Componente NFC-e
-                      </Button>
-                    </div>
-
-                    <div style={{
-                      display: 'grid',
-                      gridTemplateColumns: '1.2fr 1.8fr 1.5fr',
-                      gap: '10px'
-                    }}>
-                      <div>
-                        <label className="coliseu-label" style={{ fontSize: '10.5px' }}>CNPJ Software House:</label>
-                        <input
-                          type="text"
-                          value={config.tecnoSpeedCnpjSoftwareHouse || '03.661.869/0001-75'}
-                          onChange={(e) => setConfig({ ...config, tecnoSpeedCnpjSoftwareHouse: e.target.value })}
-                          className="coliseu-input"
-                          style={{ height: '26px', fontSize: '11px', fontWeight: 700 }}
-                        />
-                      </div>
-                      <div>
-                        <label className="coliseu-label" style={{ fontSize: '10.5px' }}>Token Software House:</label>
-                        <input
-                          type="text"
-                          value={config.tecnoSpeedTokenSoftwareHouse || '6f46553fc8fcf2e4263df17c11acafc0'}
-                          onChange={(e) => setConfig({ ...config, tecnoSpeedTokenSoftwareHouse: e.target.value })}
-                          className="coliseu-input"
-                          style={{ height: '26px', fontSize: '11px', fontFamily: 'monospace', fontWeight: 700 }}
-                        />
-                      </div>
-                      <div>
-                        <label className="coliseu-label" style={{ fontSize: '10.5px' }}>Diretório Base Componente:</label>
-                        <input
-                          type="text"
-                          value={config.tecnoSpeedDiretorioBase || 'C:\\ERPFULL\\NFE'}
-                          onChange={(e) => setConfig({ ...config, tecnoSpeedDiretorioBase: e.target.value })}
-                          className="coliseu-input"
-                          style={{ height: '26px', fontSize: '11px' }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Sub-painel ACBr quando selecionado */}
-                {config.modoOperacao === 'ACBR' && (
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '12px',
-                    padding: '8px 12px',
-                    backgroundColor: 'var(--surface-2)',
-                    borderRadius: '6px',
-                    border: '1px dashed #3b82f6',
-                    marginTop: '2px'
-                  }}>
-                    <span style={{ fontSize: '11px', fontWeight: 700, color: '#3b82f6' }}>
-                      ⚙️ Conexão ACBr TCP Socket:
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ fontSize: '11.5px', fontWeight: 800, color: '#10b981' }}>
+                      ⚡ MOTOR FISCAL: TECNOSPEED COMPONENTE DESKTOP NFC-e (spdNFCeX)
                     </span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <label style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Host:</label>
-                      <input
-                        type="text"
-                        value={config.hostAcbr || '127.0.0.1'}
-                        onChange={(e) => setConfig({ ...config, hostAcbr: e.target.value })}
-                        className="coliseu-input"
-                        style={{ height: '26px', width: '110px', fontSize: '11px', padding: '2px 6px' }}
-                      />
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <label style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Porta:</label>
-                      <input
-                        type="number"
-                        value={config.portaAcbr || 3434}
-                        onChange={(e) => setConfig({ ...config, portaAcbr: Number(e.target.value) })}
-                        className="coliseu-input"
-                        style={{ height: '26px', width: '70px', fontSize: '11px', padding: '2px 6px' }}
-                      />
-                    </div>
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      onClick={handleTestarConexaoAcbr}
-                      style={{ height: '26px', fontSize: '11px', padding: '0 10px', backgroundColor: '#3b82f6' }}
+                    <span
+                      style={{
+                        fontSize: '10px',
+                        fontWeight: 700,
+                        backgroundColor: '#10b981',
+                        color: '#fff',
+                        padding: '1px 8px',
+                        borderRadius: '10px',
+                      }}
                     >
-                      🔌 Testar Conexão ACBr
-                    </Button>
-                    <span style={{ fontSize: '10.5px', color: 'var(--text-muted)', marginLeft: 'auto' }}>
-                      Porta padrão: <strong>3434</strong>
+                      LICENÇA FULL ATIVA
                     </span>
                   </div>
-                )}
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={handleTestarConexaoTecnoSpeed}
+                    style={{ height: '26px', fontSize: '11px', padding: '0 12px', backgroundColor: '#10b981' }}
+                  >
+                    ⚡ Testar Licença & Componente NFC-e
+                  </Button>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.8fr 1.5fr', gap: '10px' }}>
+                  <div>
+                    <label className="coliseu-label" style={{ fontSize: '10.5px' }}>CNPJ Software House:</label>
+                    <input
+                      type="text"
+                      value={config.tecnoSpeedCnpjSoftwareHouse || '03.661.869/0001-75'}
+                      onChange={(e) => setConfig({ ...config, tecnoSpeedCnpjSoftwareHouse: e.target.value })}
+                      className="coliseu-input"
+                      style={{ height: '26px', fontSize: '11px', fontWeight: 700 }}
+                    />
+                  </div>
+                  <div>
+                    <label className="coliseu-label" style={{ fontSize: '10.5px' }}>Token Software House:</label>
+                    <input
+                      type="text"
+                      value={config.tecnoSpeedTokenSoftwareHouse || '6f46553fc8fcf2e4263df17c11acafc0'}
+                      onChange={(e) => setConfig({ ...config, tecnoSpeedTokenSoftwareHouse: e.target.value })}
+                      className="coliseu-input text-mono"
+                      style={{ height: '26px', fontSize: '11px', fontWeight: 700 }}
+                    />
+                  </div>
+                  <div>
+                    <label className="coliseu-label" style={{ fontSize: '10.5px' }}>Diretório Base Componente:</label>
+                    <input
+                      type="text"
+                      value={config.tecnoSpeedDiretorioBase || 'C:\\ERPFULL\\NFE'}
+                      onChange={(e) => setConfig({ ...config, tecnoSpeedDiretorioBase: e.target.value })}
+                      className="coliseu-input"
+                      style={{ height: '26px', fontSize: '11px' }}
+                    />
+                  </div>
+                </div>
               </div>
 
               {/* Linha 0: Série e Numeração Sequencial NFC-e */}
@@ -977,14 +795,25 @@ export const GerenciamentoNFCePage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Linha 1: CNPJ e Nome */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 2.5fr', gap: '10px' }}>
+              {/* Linha 1: CNPJ, IE e Nome */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.2fr 2fr', gap: '10px' }}>
                 <div>
                   <label className="coliseu-label">CNPJ do Emitente:</label>
                   <input
                     type="text"
                     value={config.cnpjEmitente}
                     onChange={(e) => setConfig({ ...config, cnpjEmitente: e.target.value })}
+                    className="coliseu-input"
+                    style={{ height: '32px', fontWeight: 700 }}
+                  />
+                </div>
+
+                <div>
+                  <label className="coliseu-label">Inscrição Estadual (I.E.):</label>
+                  <input
+                    type="text"
+                    value={config.inscricaoEstadualEmitente || ''}
+                    onChange={(e) => setConfig({ ...config, inscricaoEstadualEmitente: e.target.value })}
                     className="coliseu-input"
                     style={{ height: '32px', fontWeight: 700 }}
                   />

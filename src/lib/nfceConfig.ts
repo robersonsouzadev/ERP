@@ -95,7 +95,7 @@ export const CONFIG_NFCE_PADRAO: NfceConfiguracaoCompleta = {
   ultimoNumeroAutorizadoNfce: 119,
   cnpjEmitente: '68.148.349/0001-09',
   nomeEmitente: 'LIVRARIA DAMASCO LTDA',
-  inscricaoEstadualEmitente: '283261064',
+  inscricaoEstadualEmitente: '500361673',
   certificadoDigital: 'LIVRARIA DAMASCO LTDA:68148349000109',
   caminhoArquivoPfx: 'C:\\ERPFULL\\CERTDAMASCO 1234.PFX',
   senhaCertificadoA1: '1234',
@@ -147,8 +147,8 @@ export function getNfceConfig(): NfceConfiguracaoCompleta {
     if (!merged.modeloDanfce || merged.modeloDanfce === 'C:\\ERPFULL\\NFE\\NFCe\\Templates\\Danfce.rtm') {
       merged.modeloDanfce = 'C:\\ERPFULL\\NFE\\NFCe\\Templates\\vm60\\Danfce\\retrato.rtm';
     }
-    if (!merged.inscricaoEstadualEmitente || merged.inscricaoEstadualEmitente === '283490001' || merged.inscricaoEstadualEmitente === '283261864') {
-      merged.inscricaoEstadualEmitente = '283261064';
+    if (!merged.inscricaoEstadualEmitente || merged.inscricaoEstadualEmitente === '283490001' || merged.inscricaoEstadualEmitente === '283261064' || merged.inscricaoEstadualEmitente === '283261864') {
+      merged.inscricaoEstadualEmitente = '500361673';
     }
     if (!merged.cnpjEmitente || merged.cnpjEmitente === '05.766.577/0001-22') {
       merged.cnpjEmitente = '68.148.349/0001-09';
