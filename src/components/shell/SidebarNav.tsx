@@ -190,7 +190,7 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
       {/* Header com Monograma Enterprise e Botão de Recolher */}
       <div
         style={{
-          height: 'var(--header-height)',
+          height: '56px',
           padding: '0 var(--spacing-3)',
           display: 'flex',
           alignItems: 'center',
@@ -200,9 +200,9 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
         }}
       >
         {!collapsed ? (
-          <ColiseuLogo size="sm" variant="full" />
+          <ColiseuLogo size="md" variant="full" />
         ) : (
-          <ColiseuLogo size="sm" variant="icon" />
+          <ColiseuLogo size="md" variant="icon" />
         )}
 
         <button

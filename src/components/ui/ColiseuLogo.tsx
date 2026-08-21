@@ -22,19 +22,19 @@ export const ColiseuLogo: React.FC<ColiseuLogoProps> = ({
   const currentTheme = themeOverride || theme || 'dark';
 
   const heights = {
-    sm: 26,
-    md: 32,
-    lg: 42,
+    sm: 34,
+    md: 42,
+    lg: 52,
   };
 
   const iconSizes = {
-    sm: 22,
-    md: 28,
-    lg: 38,
+    sm: 28,
+    md: 34,
+    lg: 44,
   };
 
-  const currentHeight = heights[size] || 32;
-  const currentIconSize = iconSizes[size] || 28;
+  const currentHeight = heights[size] || 42;
+  const currentIconSize = iconSizes[size] || 34;
   const logoSrc = currentTheme === 'light' ? '/coliseu-logo.png' : '/coliseu-logo-dark.png';
 
   if (variant === 'icon') {
@@ -82,7 +82,7 @@ export const ColiseuLogo: React.FC<ColiseuLogoProps> = ({
         style={{
           height: `${currentHeight}px`,
           width: 'auto',
-          maxWidth: size === 'lg' ? '190px' : size === 'md' ? '150px' : '125px',
+          maxWidth: size === 'lg' ? '220px' : size === 'md' ? '180px' : '150px',
           objectFit: 'contain',
           display: 'block',
         }}
@@ -91,16 +91,16 @@ export const ColiseuLogo: React.FC<ColiseuLogoProps> = ({
       {showErpBadge && (
         <span
           style={{
-            fontSize: size === 'lg' ? '11px' : size === 'md' ? '9px' : '8px',
+            fontSize: size === 'lg' ? '12px' : size === 'md' ? '10px' : '9px',
             fontWeight: 800,
-            padding: size === 'lg' ? '2px 7px' : '1.5px 5px',
-            borderRadius: '4px',
+            padding: size === 'lg' ? '2.5px 8px' : size === 'md' ? '2px 6px' : '1.5px 5px',
+            borderRadius: '5px',
             backgroundColor: '#0284c7',
             color: '#ffffff',
             letterSpacing: '0.08em',
             textTransform: 'uppercase',
             lineHeight: 1,
-            marginLeft: '2px',
+            marginLeft: '3px',
             boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
           }}
         >
