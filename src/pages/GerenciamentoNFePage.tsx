@@ -32,6 +32,7 @@ import {
   FormaEmissaoNFe,
   AmbienteSefaz,
 } from '../lib/nfeConfig';
+import { getPedidosVenda, cancelarNotaFiscalPedido } from '../lib/pedidosVenda';
 import { invoke } from '@tauri-apps/api/core';
 import {
   escolherPasta,
@@ -301,19 +302,34 @@ export const GerenciamentoNFePage: React.FC = () => {
       return;
     }
 
+    const desvincularPedidosAposCancelamento = (chave: string, motivo: string) => {
+      try {
+        const lista = getPedidosVenda();
+        lista.forEach((p) => {
+          if (p.chaveNFeEmitida === chave || p.chaveNFeAcobertamento === chave) {
+            cancelarNotaFiscalPedido(p.id, 'NFE', motivo);
+            logRetorno(`🔓 Pedido Nº ${p.numeroPedido} liberado e destravado para novo faturamento após cancelamento da NF-e.`);
+          }
+        });
+      } catch (err) {
+        console.warn('Erro ao atualizar pedidos vinculados ao cancelamento:', err);
+      }
+    };
+
     if (config.modoOperacao === 'TECNOSPEED') {
       try {
         const res = await invoke<string>('tecnospeed_cancelar_nfe_cmd', {
           chave: chaveCanc,
           justificativa: justificativaCanc,
-          protocolo: '150260001928374',
+          protocolo: '150260001829384',
           cnpj: config.cnpjEmitente,
           uf: obterSiglaUf(config.ufWebService),
           ambiente: config.ambienteDestino === 'PRODUÇÃO' ? 1 : 2,
           certName: config.certificadoDigital || '',
         });
         logRetorno(`✅ Cancelamento homologado via TecnoSpeed: ${res}`);
-        showToast('NF-e cancelada com sucesso!');
+        desvincularPedidosAposCancelamento(chaveCanc, justificativaCanc);
+        showToast('NF-e cancelada e pedido destravado com sucesso!');
         setIsModalCancelarOpen(false);
         setChaveCanc('');
         setJustificativaCanc('');
@@ -334,7 +350,8 @@ export const GerenciamentoNFePage: React.FC = () => {
           sandbox: config.nuvemFiscalAmbiente === 'SANDBOX',
         });
         logRetorno(`✅ Cancelamento homologado via Nuvem Fiscal: ${res}`);
-        showToast('NF-e cancelada com sucesso!');
+        desvincularPedidosAposCancelamento(chaveCanc, justificativaCanc);
+        showToast('NF-e cancelada e pedido destravado com sucesso!');
         setIsModalCancelarOpen(false);
         setChaveCanc('');
         setJustificativaCanc('');
@@ -355,7 +372,8 @@ export const GerenciamentoNFePage: React.FC = () => {
           port: Number(config.portaAcbr) || 3434,
         });
         logRetorno(`✅ Cancelamento homologado via ACBr: ${res}`);
-        showToast('NF-e cancelada com sucesso!');
+        desvincularPedidosAposCancelamento(chaveCanc, justificativaCanc);
+        showToast('NF-e cancelada e pedido destravado com sucesso!');
         setIsModalCancelarOpen(false);
         setChaveCanc('');
         setJustificativaCanc('');
@@ -370,7 +388,8 @@ export const GerenciamentoNFePage: React.FC = () => {
     logRetorno(
       `✅ Cancelamento Homologado na SEFAZ: Chave=${chaveCanc}, Protocolo=${protocolo}, Evento=110111 (cStat 135 - Evento registrado e vinculado a NF-e).`
     );
-    showToast('NF-e cancelada com sucesso na SEFAZ!');
+    desvincularPedidosAposCancelamento(chaveCanc, justificativaCanc);
+    showToast('NF-e cancelada e pedido destravado com sucesso!');
     setIsModalCancelarOpen(false);
     setChaveCanc('');
     setJustificativaCanc('');
@@ -790,6 +809,46 @@ export const GerenciamentoNFePage: React.FC = () => {
                       style={{ height: '28px', fontSize: '11px' }}
                     />
                   </div>
+                </div>
+              </div>
+
+              {/* Linha 0: Série e Numeração Sequencial NF-e */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 1.5fr 2.5fr',
+                gap: '10px',
+                backgroundColor: 'rgba(59, 130, 246, 0.05)',
+                padding: '10px 12px',
+                borderRadius: '6px',
+                border: '1px solid rgba(59, 130, 246, 0.3)',
+                alignItems: 'center'
+              }}>
+                <div>
+                  <label className="coliseu-label" style={{ color: '#3b82f6', fontWeight: 700 }}>Série NF-e:</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="999"
+                    value={config.serieNfe || 1}
+                    onChange={(e) => setConfig({ ...config, serieNfe: Math.max(1, Number(e.target.value) || 1) })}
+                    className="coliseu-input text-mono"
+                    style={{ height: '32px', fontWeight: 700 }}
+                  />
+                </div>
+                <div>
+                  <label className="coliseu-label" style={{ color: '#3b82f6', fontWeight: 700 }}>Próximo Nº a Emitir:</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={config.proximoNumeroNfe || 1025}
+                    onChange={(e) => setConfig({ ...config, proximoNumeroNfe: Math.max(1, Number(e.target.value) || 1) })}
+                    className="coliseu-input text-mono"
+                    style={{ height: '32px', fontWeight: 800, color: '#3b82f6', fontSize: '14px' }}
+                  />
+                </div>
+                <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', paddingLeft: '8px' }}>
+                  Nota fiscal atual: <strong>Série {config.serieNfe || 1} - Nº {String(config.proximoNumeroNfe || 1025).padStart(6, '0')}</strong>.
+                  <span style={{ display: 'block', fontSize: '10.5px', color: 'var(--text-muted)' }}>Auto-incrementa (+1) a cada autorização SEFAZ.</span>
                 </div>
               </div>
 

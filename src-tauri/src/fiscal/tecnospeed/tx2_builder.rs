@@ -55,6 +55,7 @@ pub struct TecnoSpeedNfeDados {
     pub valor_total_nota: f64,
     pub valor_desconto: Option<f64>,
     pub informacoes_adicionais: Option<String>,
+    pub chave_referenciada: Option<String>, // Chave da NFC-e/NF-e referenciada (ex: CFOP 5.929/6.929 Acobertamento)
 }
 
 pub fn gerar_arquivo_tx2(dados: &TecnoSpeedNfeDados) -> String {
@@ -102,6 +103,16 @@ pub fn gerar_arquivo_tx2(dados: &TecnoSpeedNfeDados) -> String {
     tx2.push_str("indPres_B25b=1\n");
     tx2.push_str("procEmi_B26=0\n");
     tx2.push_str("verProc_B27=ColiseuERP_TecnoSpeed_4.00\n");
+
+    // Documento Fiscal Referenciado (ex: Acobertamento de Cupom Fiscal NFC-e com CFOP 5.929 / 6.929)
+    if let Some(ref ref_chave) = dados.chave_referenciada {
+        let clean_ref = ref_chave.chars().filter(|c| c.is_ascii_digit()).collect::<String>();
+        if clean_ref.len() == 44 {
+            tx2.push_str("INCLUIRPARTE=BA02\n");
+            tx2.push_str(&format!("refNFe_BA02={}\n", clean_ref));
+            tx2.push_str("SALVARPARTE=BA02\n");
+        }
+    }
 
     // Emitente
     tx2.push_str(&format!("CNPJ_C02={}\n", clean_cnpj_emit));

@@ -5,6 +5,7 @@ import { dbService } from '../lib/db';
 import { fiscalService, DocumentoFiscalResult } from '../lib/fiscal';
 import { calculateCart, buildVendaItensPayload } from '../lib/discount';
 import { parseNumber } from '../lib/formatters';
+import { obterProximoNumeroNFCe, incrementarNumeroNFCe } from '../lib/nfceConfig';
 
 import { POSHeader } from '../components/pdv/POSHeader';
 import { BarcodeScannerListener } from '../components/pdv/BarcodeScannerListener';
@@ -199,17 +200,22 @@ export const PDVPage: React.FC = () => {
 
       if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
         fiscalDoc = await fiscalService.emitirNFCe(vendaId, 65, tpEmis);
+        incrementarNumeroNFCe();
       } else {
+        const nfceInfo = obterProximoNumeroNFCe();
+        const numAtual = nfceInfo.proximoNumero;
+        incrementarNumeroNFCe(numAtual);
+
         fiscalDoc = {
           id: 'doc-' + Date.now(),
-          chave_acesso: '35260812345678000190650010000001231000001234',
+          chave_acesso: `5026080576657700012265001${String(numAtual).padStart(9, '0')}1000001234`,
           status: isContingency ? 'contingencia' : 'autorizado',
           modelo: 65,
-          serie: 1,
-          numero: Math.floor(Math.random() * 9000) + 1000,
+          serie: nfceInfo.serie,
+          numero: numAtual,
           xml_envio: '<nfeProc>...</nfeProc>',
           qrcode_url:
-            'https://www.sefaz.sp.gov.br/nfce/qrcode?p=35260812345678000190650010000001231000001234|2|1|1|HASH',
+            `https://www.sefaz.ms.gov.br/nfce/qrcode?p=5026080576657700012265001${String(numAtual).padStart(9, '0')}1000001234|2|1|1|HASH`,
         };
       }
 

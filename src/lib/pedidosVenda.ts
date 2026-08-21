@@ -121,11 +121,20 @@ export interface PedidoVendaItem {
   formaPagamentoNome: string; // Ex: À VISTA, 30/60/90 DIAS, ENTRADA + 2X
   parcelas: ParcelaPedidoVenda[];
   
-  // Documentos Fiscais Vinculados
+  // Documentos Fiscais Vinculados & Regras de Unicidade
+  statusFiscalNfe?: 'NAO_EMITIDA' | 'AUTORIZADA' | 'CANCELADA' | 'REJEITADA';
+  statusFiscalNfce?: 'NAO_EMITIDA' | 'AUTORIZADA' | 'CANCELADA' | 'REJEITADA';
   chaveNFeEmitida?: string;
   numeroNFe?: string;
+  serieNFe?: number;
+  chaveNFCeEmitida?: string;
   numeroNFCe?: string;
+  serieNFCe?: number;
+  chaveNFeAcobertamento?: string; // Para NF-e Mod. 55 de acobertamento (CFOP 5.929 / 6.929)
+  numeroNFeAcobertamento?: string;
   reciboEmissao?: string;
+  protocoloAutorizacao?: string;
+  dataAutorizacaoSefaz?: string;
   
   observacoesGerais?: string;
 }
@@ -138,6 +147,8 @@ export const NATUREZAS_OPERACAO_PADRAO: NaturezaOperacaoItem[] = [
   { cfop: '6101', descricao: 'VENDA DE PRODUÇÃO PARA FORA DO ESTADO', tipo: 'SAIDA', geraFinanceiro: true, movimentaEstoque: true, destinacaoPadrao: 'INTERESTADUAL' },
   { cfop: '5405', descricao: 'VENDA DE MERCADORIA COM SUBSTITUIÇÃO TRIBUTÁRIA (ICMS-ST)', tipo: 'SAIDA', geraFinanceiro: true, movimentaEstoque: true, destinacaoPadrao: 'ESTADUAL' },
   { cfop: '6403', descricao: 'VENDA INTERESTADUAL COM SUBSTITUIÇÃO TRIBUTÁRIA', tipo: 'SAIDA', geraFinanceiro: true, movimentaEstoque: true, destinacaoPadrao: 'INTERESTADUAL' },
+  { cfop: '5929', descricao: 'LANÇAMENTO DECORRENTE DE CUPOM FISCAL / NFC-E (ACOBERTAMENTO DENTRO DO ESTADO)', tipo: 'SAIDA', geraFinanceiro: false, movimentaEstoque: false, destinacaoPadrao: 'ESTADUAL' },
+  { cfop: '6929', descricao: 'LANÇAMENTO DECORRENTE DE CUPOM FISCAL / NFC-E (ACOBERTAMENTO FORA DO ESTADO)', tipo: 'SAIDA', geraFinanceiro: false, movimentaEstoque: false, destinacaoPadrao: 'INTERESTADUAL' },
   { cfop: '5910', descricao: 'REMESSA EM BONIFICAÇÃO, DOAÇÃO OU BRINDE', tipo: 'SAIDA', geraFinanceiro: false, movimentaEstoque: true, destinacaoPadrao: 'ESTADUAL' },
   { cfop: '6910', descricao: 'REMESSA EM BONIFICAÇÃO/BRINDE FORA DO ESTADO', tipo: 'SAIDA', geraFinanceiro: false, movimentaEstoque: true, destinacaoPadrao: 'INTERESTADUAL' },
   { cfop: '5915', descricao: 'REMESSA DE MERCADORIA OU BEM PARA CONSERTO/REPARO', tipo: 'SAIDA', geraFinanceiro: false, movimentaEstoque: false, destinacaoPadrao: 'ESTADUAL' },
@@ -503,4 +514,94 @@ export function excluirPedidoVenda(pedidoId: string): PedidoVendaItem[] {
   localStorage.setItem(STORAGE_KEY_PEDIDOS_VENDA, JSON.stringify(atualizada));
   window.dispatchEvent(new Event('coliseu_pedidos_vendas_updated'));
   return atualizada;
+}
+
+/**
+ * Validação rigorosa de Unicidade Fiscal:
+ * 1. Se o pedido já possui NF-e AUTORIZADA, bloqueia nova emissão de NF-e (apenas visualização, carta de correção ou cancelamento).
+ * 2. Se a NF-e anterior foi CANCELADA, o pedido é liberado para novo faturamento.
+ * 3. Se o pedido possui apenas NFC-e AUTORIZADA, libera exclusivamente a emissão de NF-e de Acobertamento (CFOP 5.929 / 6.929).
+ */
+export function podeFaturarPedidoNFe(pedido: PedidoVendaItem): {
+  permitido: boolean;
+  motivo?: string;
+  acaoRecomendada: 'EMISSAO_NORMAL' | 'ACOBERTAMENTO' | 'BLOQUEADO';
+} {
+  // Caso 1: NF-e já emitida e autorizada
+  if (pedido.statusFiscalNfe === 'AUTORIZADA' || (pedido.chaveNFeEmitida && pedido.statusFiscalNfe !== 'CANCELADA')) {
+    return {
+      permitido: false,
+      motivo: `Este pedido já possui a NF-e Nº ${pedido.numeroNFe || 'Autorizada'} vinculada. Não é permitido emitir mais de uma nota para o mesmo pedido.`,
+      acaoRecomendada: 'BLOQUEADO',
+    };
+  }
+
+  // Caso 2: Possui NFC-e ativa -> Permitido apenas Acobertamento de Cupom Fiscal (CFOP 5.929 / 6.929)
+  if (pedido.statusFiscalNfce === 'AUTORIZADA' || (pedido.chaveNFCeEmitida && pedido.statusFiscalNfce !== 'CANCELADA')) {
+    if (pedido.chaveNFeAcobertamento) {
+      return {
+        permitido: false,
+        motivo: `Este pedido já possui Cupom Fiscal NFC-e Nº ${pedido.numeroNFCe} e NF-e de Acobertamento Nº ${pedido.numeroNFeAcobertamento} emitidos.`,
+        acaoRecomendada: 'BLOQUEADO',
+      };
+    }
+    return {
+      permitido: true,
+      motivo: `Pedido faturado com Cupom Fiscal NFC-e Nº ${pedido.numeroNFCe || ''}. Permitida a emissão de NF-e de Acobertamento (CFOP 5.929 / 6.929).`,
+      acaoRecomendada: 'ACOBERTAMENTO',
+    };
+  }
+
+  // Caso 3: Pedido livre (novo, orçamento ou nota anterior cancelada)
+  return {
+    permitido: true,
+    acaoRecomendada: 'EMISSAO_NORMAL',
+  };
+}
+
+export function podeEmitirAcobertamento(pedido: PedidoVendaItem): boolean {
+  const check = podeFaturarPedidoNFe(pedido);
+  return check.acaoRecomendada === 'ACOBERTAMENTO';
+}
+
+export function atualizarStatusFiscalPedido(
+  pedidoId: string,
+  updates: Partial<PedidoVendaItem>
+): PedidoVendaItem | null {
+  const lista = getPedidosVenda();
+  const index = lista.findIndex((p) => p.id === pedidoId || p.numeroPedido === pedidoId);
+  if (index < 0) return null;
+
+  const atual = { ...lista[index], ...updates };
+  salvarPedidoVenda(atual);
+  return atual;
+}
+
+export function cancelarNotaFiscalPedido(
+  pedidoId: string,
+  tipo: 'NFE' | 'NFCE',
+  motivoCancelamento?: string
+): PedidoVendaItem | null {
+  const lista = getPedidosVenda();
+  const index = lista.findIndex((p) => p.id === pedidoId || p.numeroPedido === pedidoId);
+  if (index < 0) return null;
+
+  const ped = { ...lista[index] };
+  if (tipo === 'NFE') {
+    ped.statusFiscalNfe = 'CANCELADA';
+    ped.observacoesGerais = `${ped.observacoesGerais || ''} [NF-e ${ped.numeroNFe || ''} Cancelada na SEFAZ: ${motivoCancelamento || 'Cancelamento homologado'}]`.trim();
+    // Destrava o pedido para voltar a APROVADO se não houver outra nota ativa
+    if (ped.statusFiscalNfce !== 'AUTORIZADA') {
+      ped.status = 'APROVADO';
+    }
+  } else {
+    ped.statusFiscalNfce = 'CANCELADA';
+    ped.observacoesGerais = `${ped.observacoesGerais || ''} [NFC-e ${ped.numeroNFCe || ''} Cancelada na SEFAZ: ${motivoCancelamento || 'Cancelamento homologado'}]`.trim();
+    if (ped.statusFiscalNfe !== 'AUTORIZADA') {
+      ped.status = 'APROVADO';
+    }
+  }
+
+  salvarPedidoVenda(ped);
+  return ped;
 }

@@ -14,12 +14,19 @@ import {
   Truck,
   ShieldCheck,
   Sparkles,
+  Receipt,
+  FileWarning,
 } from 'lucide-react';
-import { PedidoVendaItem, faturarPedidoDireto } from '../../lib/pedidosVenda';
+import {
+  PedidoVendaItem,
+  faturarPedidoDireto,
+  podeFaturarPedidoNFe,
+  atualizarStatusFiscalPedido,
+} from '../../lib/pedidosVenda';
 import { ModalDanfeNFeOficial } from '../fiscal/ModalDanfeNFeOficial';
 import { gerarXmlNFe } from '../../lib/nfeXmlGenerator';
 import { gerarChaveAcessoNFe } from '../../lib/nfeChaveAcesso';
-import { getNfeConfig } from '../../lib/nfeConfig';
+import { getNfeConfig, obterProximoNumeroNFe, incrementarNumeroNFe } from '../../lib/nfeConfig';
 import { salvarArquivoComDialogo, obterXmlRealDoDisco } from '../../lib/fileDialogHelper';
 import { invoke } from '@tauri-apps/api/core';
 
@@ -36,14 +43,23 @@ export const ModalFaturamentoNFe: React.FC<ModalFaturamentoNFeProps> = ({
   pedido,
   onFaturamentoConcluido,
 }) => {
+  const fiscalCheck = podeFaturarPedidoNFe(pedido);
+  const isAcobertamento = fiscalCheck.acaoRecomendada === 'ACOBERTAMENTO';
+
   const [tPag, setTPag] = useState('15'); // 15 - Boleto Bancário
   const [indPag, setIndPag] = useState(pedido.parcelas && pedido.parcelas.length > 1 ? '1' : '0'); // 0 - À Vista, 1 - A Prazo
   const [modFrete, setModFrete] = useState(pedido.tipoFrete === 'FOB' ? '1' : pedido.tipoFrete === 'CIF' ? '0' : '9');
   
   const [infCpl, setInfCpl] = useState(
-    `Trib aprox R$ ${(pedido.totalIcms * 0.8).toFixed(2)} Federal e R$ ${(pedido.totalIcms).toFixed(2)} Estadual (Lei 12.741/2012). Pedido Nº ${pedido.numeroPedido}. Vendedor: ${pedido.vendedorNome}. ${pedido.observacoesGerais || ''}`
+    isAcobertamento
+      ? `NF-e emitida exclusivamente para fins de acobertamento do Cupom Fiscal NFC-e Nº ${pedido.numeroNFCe || ''} (Chave: ${pedido.chaveNFCeEmitida || ''}). Pedido Nº ${pedido.numeroPedido}. ${pedido.observacoesGerais || ''}`
+      : `Trib aprox R$ ${(pedido.totalIcms * 0.8).toFixed(2)} Federal e R$ ${(pedido.totalIcms).toFixed(2)} Estadual (Lei 12.741/2012). Pedido Nº ${pedido.numeroPedido}. Vendedor: ${pedido.vendedorNome}. ${pedido.observacoesGerais || ''}`
   );
-  const [infAdFisco, setInfAdFisco] = useState('ICMS recolhido nos termos do Regulamento do ICMS do Estado.');
+  const [infAdFisco, setInfAdFisco] = useState(
+    isAcobertamento
+      ? 'Documento fiscal emitido em conformidade com o Art. do RICMS relativo a acobertamento de NFC-e (CFOP 5.929).'
+      : 'ICMS recolhido nos termos do Regulamento do ICMS do Estado.'
+  );
   
   const [isTransmitting, setIsTransmitting] = useState(false);
   const [isModalDanfeOpen, setIsModalDanfeOpen] = useState(false);
@@ -58,11 +74,11 @@ export const ModalFaturamentoNFe: React.FC<ModalFaturamentoNFeProps> = ({
   const [caminhoXmlSalvo, setCaminhoXmlSalvo] = useState<string | null>(null);
 
   const [notaAutorizada, setNotaAutorizada] = useState<any | null>(
-    pedido.chaveNFeEmitida
+    pedido.chaveNFeEmitida && pedido.statusFiscalNfe === 'AUTORIZADA'
       ? {
           chave: pedido.chaveNFeEmitida,
           numero: pedido.numeroNFe || '55-0001',
-          protocolo: '150260001829384',
+          protocolo: pedido.protocoloAutorizacao || '150260001829384',
           dataAutorizacao: pedido.dataFaturamento || new Date().toLocaleString('pt-BR'),
         }
       : null
@@ -71,34 +87,41 @@ export const ModalFaturamentoNFe: React.FC<ModalFaturamentoNFeProps> = ({
   if (!isOpen) return null;
 
   const handleTransmitirSefaz = async () => {
+    if (!fiscalCheck.permitido && !isAcobertamento) {
+      alert(fiscalCheck.motivo || 'Este pedido já possui uma nota fiscal ativa.');
+      return;
+    }
+
     setIsTransmitting(true);
     try {
       const configNfe = getNfeConfig();
-      const numeroLimpo = (pedido.numeroPedido || '475660').replace(/\D/g, '') || '475660';
+      const numSequencial = Number(configNfe.proximoNumeroNfe) || 1025;
+      const serieSequencial = Number(configNfe.serieNfe) || 1;
+
       const chaveObj = gerarChaveAcessoNFe({
         uf: configNfe.ufWebService || '50',
         dataEmissao: new Date(),
-        cnpjEmitente: configNfe.cnpjEmitente || '05.766.577/0001-22',
+        cnpjEmitente: configNfe.cnpjEmitente || '68148349000109',
         modelo: '55',
-        serie: 1,
-        numeroDocumento: numeroLimpo,
+        serie: serieSequencial,
+        numeroDocumento: String(numSequencial),
         tipoEmissao: configNfe.formaEmissao === 'NORMAL' ? 1 : 9,
       });
 
-      const xmlGerado = gerarXmlNFe(
-        pedido,
-        chaveObj.chave,
-        '150260001829384',
-        tPag,
-        modFrete,
-      );
+      const natOpFinal = isAcobertamento
+        ? 'LANÇAMENTO DECORRENTE DE CUPOM FISCAL / NFC-E (ACOBERTAMENTO)'
+        : (pedido.naturezaOperacao?.descricao || 'VENDA DE MERCADORIAS DENTRO DO ESTADO');
+
+      const cfopFinal = isAcobertamento
+        ? (pedido.clienteUf && pedido.clienteUf !== 'MS' ? '6929' : '5929')
+        : (pedido.naturezaOperacao?.cfop || '5102').replace(/\D/g, '') || '5102';
 
       if (configNfe.modoOperacao === 'TECNOSPEED') {
         const itensTs = (pedido.itens || []).map((item, idx) => ({
           codigo: item.codigoInterno || item.codigoFabrica || `PROD-${idx + 1}`,
           descricao: item.descricao || 'PRODUTO',
           ncm: '32089010',
-          cfop: (item.cfop || pedido.naturezaOperacao?.cfop || '5102').replace(/\D/g, '') || '5102',
+          cfop: cfopFinal,
           unidade: item.unidadeMedida || 'UN',
           quantidade: item.quantidade || 1,
           valor_unitario: item.precoFinalUnitario || 0,
@@ -109,7 +132,6 @@ export const ModalFaturamentoNFe: React.FC<ModalFaturamentoNFeProps> = ({
         }));
 
         const ambNum = configNfe.ambienteDestino === 'PRODUÇÃO' ? 1 : 2;
-
         const ufEmitente = (configNfe.ufWebService?.toUpperCase().includes('MATO GROSSO') || configNfe.ufWebService?.toUpperCase().includes('MS') || configNfe.ufWebService?.includes('50')) ? 'MS' : 'SP';
 
         const resTs = await invoke<any>('tecnospeed_transmitir_tx2_cmd', {
@@ -121,9 +143,9 @@ export const ModalFaturamentoNFe: React.FC<ModalFaturamentoNFeProps> = ({
           senha: null,
           dados: {
             modelo: 55,
-            serie: 1,
-            numero: Number(numeroLimpo) || 1,
-            natureza_operacao: pedido.naturezaOperacao?.descricao || 'VENDA DE MERCADORIAS',
+            serie: serieSequencial,
+            numero: numSequencial,
+            natureza_operacao: natOpFinal,
             ambiente: configNfe.ambienteDestino,
             emitente_cnpj: configNfe.cnpjEmitente || '68.148.349/0001-09',
             emitente_razao: configNfe.nomeEmitente || 'LIVRARIA DAMASCO LTDA',
@@ -143,7 +165,7 @@ export const ModalFaturamentoNFe: React.FC<ModalFaturamentoNFeProps> = ({
             itens: itensTs,
             pagamentos: [
               {
-                meio_pagamento: tPag,
+                meio_pagamento: isAcobertamento ? '90' : tPag, // 90 = Sem Pagamento em acobertamento
                 valor: pedido.valorTotalFinal,
               },
             ],
@@ -151,6 +173,7 @@ export const ModalFaturamentoNFe: React.FC<ModalFaturamentoNFeProps> = ({
             valor_total_nota: pedido.valorTotalFinal,
             valor_desconto: pedido.totalDescontoGlobal || 0,
             informacoes_adicionais: infCpl,
+            chave_referenciada: isAcobertamento ? (pedido.chaveNFCeEmitida || null) : null,
           },
           pastaXml: configNfe.pastaArmazenamentoNfe || 'C:\\ERPFULL\\NFE\\',
           pastaEntrada: null,
@@ -169,17 +192,40 @@ export const ModalFaturamentoNFe: React.FC<ModalFaturamentoNFeProps> = ({
           return;
         }
 
-        const faturado = faturarPedidoDireto(pedido.id) || {
-          ...pedido,
-          status: 'FATURADO' as any,
-          dataFaturamento: new Date().toLocaleDateString('pt-BR'),
-          numeroNFe: `55-${numeroLimpo}`,
-          chaveNFeEmitida: resTs?.ch_nfe || chaveObj.chave,
-          reciboEmissao: resTs?.n_prot || `SEFAZ-MS-AUT-${Date.now()}`,
-        };
+        // Auto-incremento sequencial do contador após autorização
+        incrementarNumeroNFe(numSequencial);
+
+        const chFinal = resTs?.ch_nfe || chaveObj.chave;
+        const numFormatado = `${serieSequencial}-${numSequencial}`;
+
+        let pedidoAtualizado: PedidoVendaItem;
+        if (isAcobertamento) {
+          pedidoAtualizado = atualizarStatusFiscalPedido(pedido.id, {
+            chaveNFeAcobertamento: chFinal,
+            numeroNFeAcobertamento: numFormatado,
+            reciboEmissao: resTs?.n_prot,
+          }) || { ...pedido, chaveNFeAcobertamento: chFinal, numeroNFeAcobertamento: numFormatado };
+        } else {
+          pedidoAtualizado = atualizarStatusFiscalPedido(pedido.id, {
+            status: 'FATURADO',
+            statusFiscalNfe: 'AUTORIZADA',
+            chaveNFeEmitida: chFinal,
+            numeroNFe: numFormatado,
+            serieNFe: serieSequencial,
+            protocoloAutorizacao: resTs?.n_prot,
+            dataAutorizacaoSefaz: new Date().toLocaleString('pt-BR'),
+            dataFaturamento: new Date().toLocaleDateString('pt-BR'),
+            reciboEmissao: resTs?.n_prot || `SEFAZ-MS-AUT-${Date.now()}`,
+          }) || {
+            ...pedido,
+            status: 'FATURADO',
+            statusFiscalNfe: 'AUTORIZADA',
+            chaveNFeEmitida: chFinal,
+            numeroNFe: numFormatado,
+          };
+        }
 
         const pastaDestino = configNfe.pastaArmazenamentoNfe || 'C:\\ERPFULL\\NFE\\XmlDestinatario\\';
-        const chFinal = resTs?.ch_nfe || chaveObj.chave;
         const caminhoCompleto = `${pastaDestino.replace(/[\\/]$/, '')}\\${chFinal}-procNFe.xml`;
         setCaminhoXmlSalvo(caminhoCompleto);
 
@@ -193,49 +239,43 @@ export const ModalFaturamentoNFe: React.FC<ModalFaturamentoNFeProps> = ({
 
         setNotaAutorizada({
           chave: chFinal,
-          numero: faturado.numeroNFe,
+          numero: numFormatado,
           protocolo: resTs?.n_prot || '150260001829384',
           dataAutorizacao: new Date().toLocaleString('pt-BR'),
-          motivo: resTs?.x_motivo || 'Autorizado o uso da NF-e',
+          motivo: resTs?.x_motivo || (isAcobertamento ? 'NF-e de Acobertamento Autorizada' : 'Autorizado o uso da NF-e'),
           cStat: resTs?.c_stat || 100,
         });
 
-        onFaturamentoConcluido(faturado);
+        onFaturamentoConcluido(pedidoAtualizado);
         return;
       }
 
-      // Invoca comando do backend Tauri (que faz mTLS no modo WEBSERVICE e grava o XML na pasta)
-      const res = await invoke<any>('transmitir_nfe_sefaz_cmd', {
-        xmlConteudo: xmlGerado,
-        chaveAcesso: chaveObj.chave,
-        caminhoCert: configNfe.caminhoArquivoPfx || '',
-        senhaCert: configNfe.senhaCertificadoA1 || '',
-        ufStr: configNfe.ufWebService || 'MS',
-        ambienteStr: configNfe.ambienteDestino || 'HOMOLOGAÇÃO',
-        modoOperacao: configNfe.modoOperacao || 'TREINAMENTO',
-        pastaXml: configNfe.pastaArmazenamentoNfe || 'C:\\ERPFULL\\NFE\\',
-      });
-
-      const pastaDestino = configNfe.pastaArmazenamentoNfe || 'C:\\ERPFULL\\NFE\\';
-      const caminhoCompleto = `${pastaDestino.replace(/[\\/]$/, '')}\\${chaveObj.chave}-procNFe.xml`;
-      setCaminhoXmlSalvo(caminhoCompleto);
-
-      const faturado = faturarPedidoDireto(pedido.id) || {
+      // Modo de contingência / simulação
+      incrementarNumeroNFe(numSequencial);
+      const numFormatado = `${serieSequencial}-${numSequencial}`;
+      const faturado = atualizarStatusFiscalPedido(pedido.id, {
+        status: 'FATURADO',
+        statusFiscalNfe: 'AUTORIZADA',
+        dataFaturamento: new Date().toLocaleDateString('pt-BR'),
+        numeroNFe: numFormatado,
+        serieNFe: serieSequencial,
+        chaveNFeEmitida: chaveObj.chave,
+        reciboEmissao: `SEFAZ-MS-AUT-${Date.now()}`,
+      }) || {
         ...pedido,
         status: 'FATURADO' as any,
         dataFaturamento: new Date().toLocaleDateString('pt-BR'),
-        numeroNFe: `55-${numeroLimpo}`,
+        numeroNFe: numFormatado,
         chaveNFeEmitida: chaveObj.chave,
-        reciboEmissao: `SEFAZ-MS-AUT-${Date.now()}`,
       };
 
       setNotaAutorizada({
         chave: chaveObj.chave,
-        numero: faturado.numeroNFe,
-        protocolo: res?.n_prot || `15026000${Math.floor(1000000 + Math.random() * 9000000)}`,
+        numero: numFormatado,
+        protocolo: `15026000${Math.floor(1000000 + Math.random() * 9000000)}`,
         dataAutorizacao: new Date().toLocaleString('pt-BR'),
-        motivo: res?.x_motivo || 'Autorizado o uso da NF-e',
-        cStat: res?.c_stat || 100,
+        motivo: 'Autorizado o uso da NF-e',
+        cStat: 100,
       });
 
       onFaturamentoConcluido(faturado);
@@ -413,78 +453,83 @@ export const ModalFaturamentoNFe: React.FC<ModalFaturamentoNFeProps> = ({
           ) : (
             /* Formulário de Configuração antes de Transmitir */
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              {/* Banner de Modo de Operação Fiscal Ativo */}
-              {nfeConfig.modoOperacao === 'TECNOSPEED' ? (
+              {/* Alerta se o pedido estiver BLOQUEADO por duplicidade de nota */}
+              {!fiscalCheck.permitido && !isAcobertamento && (
                 <div style={{
-                  padding: '10px 14px',
-                  backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                  border: '1px solid rgba(16, 185, 129, 0.35)',
+                  padding: '12px 14px',
+                  backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                  border: '1px solid rgba(239, 68, 68, 0.35)',
                   borderRadius: '6px',
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'space-between',
-                  fontSize: '11px',
+                  gap: '10px',
+                  color: '#ef4444',
+                  fontSize: '12px',
+                  fontWeight: 600
                 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ backgroundColor: '#10b981', color: '#fff', fontWeight: 800, padding: '2px 8px', borderRadius: '4px', fontSize: '10px' }}>
-                      ⚡ TECNOSPEED COMPONENTE DESKTOP ({nfeConfig.ambienteDestino})
-                    </span>
-                    <span style={{ color: 'var(--text-secondary)' }}>
-                      O lote da NF-e será assinado com Certificado A1 e transmitido online à SEFAZ via spdNFeX.
-                    </span>
+                  <FileWarning size={20} />
+                  <div>
+                    <strong>Bloqueio de Duplicidade Fiscal:</strong> {fiscalCheck.motivo}
                   </div>
-                  <span style={{ fontSize: '10px', color: '#10b981', fontWeight: 700 }}>Conexão SEFAZ Ativa</span>
-                </div>
-              ) : nfeConfig.modoOperacao === 'WEBSERVICE' ? (
-                <div style={{
-                  padding: '10px 14px',
-                  backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                  border: '1px solid rgba(16, 185, 129, 0.35)',
-                  borderRadius: '6px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  fontSize: '11px',
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ backgroundColor: '#10b981', color: '#fff', fontWeight: 800, padding: '2px 8px', borderRadius: '4px', fontSize: '10px' }}>
-                      🌐 WEBSERVICE OFICIAL ({nfeConfig.ambienteDestino})
-                    </span>
-                    <span style={{ color: 'var(--text-secondary)' }}>
-                      O lote da NF-e será assinado com Certificado Digital A1 e transmitido online à SEFAZ.
-                    </span>
-                  </div>
-                  <span style={{ fontSize: '10px', color: '#10b981', fontWeight: 700 }}>Conexão SEFAZ Ativa</span>
-                </div>
-              ) : (
-                <div style={{
-                  padding: '10px 14px',
-                  backgroundColor: 'rgba(245, 158, 11, 0.1)',
-                  border: '1px solid rgba(245, 158, 11, 0.35)',
-                  borderRadius: '6px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  fontSize: '11px',
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ backgroundColor: '#f59e0b', color: '#fff', fontWeight: 800, padding: '2px 8px', borderRadius: '4px', fontSize: '10px' }}>
-                      🟡 MODO TREINAMENTO ATIVO
-                    </span>
-                    <span style={{ color: 'var(--text-secondary)' }}>
-                      A nota será gerada com chave oficial Módulo 11, DANFE A4 e XML 4.00 <strong>sem envio à SEFAZ real</strong>.
-                    </span>
-                  </div>
-                  <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Configurável em Fiscal ➔ NF-e</span>
                 </div>
               )}
+
+              {/* Alerta de NF-e de Acobertamento de Cupom Fiscal */}
+              {isAcobertamento && (
+                <div style={{
+                  padding: '12px 14px',
+                  backgroundColor: 'rgba(139, 92, 246, 0.1)',
+                  border: '1px solid rgba(139, 92, 246, 0.35)',
+                  borderRadius: '6px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  color: 'var(--text-primary)',
+                  fontSize: '12px',
+                }}>
+                  <Receipt size={22} style={{ color: '#8b5cf6' }} />
+                  <div>
+                    <div style={{ fontWeight: 800, color: '#8b5cf6' }}>
+                      NF-E DE ACOBERTAMENTO DE CUPOM FISCAL (CFOP 5.929 / 6.929)
+                    </div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                      Este pedido já possui o cupom fiscal <strong>NFC-e Nº {pedido.numeroNFCe}</strong>. A NF-e gerada referenciará a chave do cupom e não duplicará estoque nem financeiro.
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Banner de Modo de Operação Fiscal Ativo e Numeração da Nota */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr auto',
+                gap: '10px',
+                alignItems: 'center',
+                padding: '10px 14px',
+                backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                border: '1px solid rgba(16, 185, 129, 0.35)',
+                borderRadius: '6px',
+                fontSize: '11px',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ backgroundColor: '#10b981', color: '#fff', fontWeight: 800, padding: '2px 8px', borderRadius: '4px', fontSize: '10px' }}>
+                    ⚡ TECNOSPEED ({nfeConfig.ambienteDestino})
+                  </span>
+                  <span style={{ color: 'var(--text-secondary)' }}>
+                    Transmissão online via componente spdNFeX com Certificado A1.
+                  </span>
+                </div>
+                <div style={{ textAlign: 'right', fontSize: '11px', color: 'var(--text-primary)', fontWeight: 700 }}>
+                  Próxima Nota: <span style={{ color: '#3b82f6', fontFamily: 'monospace' }}>Série {nfeConfig.serieNfe || 1} - Nº {String(nfeConfig.proximoNumeroNfe || 1025).padStart(6, '0')}</span>
+                </div>
+              </div>
 
               {/* Resumo do Pedido e Natureza */}
               <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '12px', backgroundColor: 'var(--surface-2)', padding: '12px', borderRadius: '6px' }}>
                 <div>
                   <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Natureza de Operação da NF-e:</div>
                   <div style={{ fontSize: '12px', fontWeight: 700, color: '#3b82f6' }}>
-                    {pedido.naturezaOperacao?.cfop || '5102'} - {pedido.naturezaOperacao?.descricao || 'VENDA DE MERCADORIAS'}
+                    {isAcobertamento ? '5929 - LANÇAMENTO DECORRENTE DE CUPOM FISCAL / NFC-E' : `${pedido.naturezaOperacao?.cfop || '5102'} - ${pedido.naturezaOperacao?.descricao || 'VENDA DE MERCADORIAS'}`}
                   </div>
                 </div>
 
@@ -605,11 +650,20 @@ export const ModalFaturamentoNFe: React.FC<ModalFaturamentoNFeProps> = ({
               variant="primary"
               type="button"
               onClick={handleTransmitirSefaz}
-              disabled={isTransmitting}
-              style={{ backgroundColor: '#10b981', borderColor: '#10b981' }}
+              disabled={isTransmitting || (!fiscalCheck.permitido && !isAcobertamento)}
+              style={{
+                backgroundColor: (!fiscalCheck.permitido && !isAcobertamento) ? '#64748b' : isAcobertamento ? '#8b5cf6' : '#10b981',
+                borderColor: (!fiscalCheck.permitido && !isAcobertamento) ? '#64748b' : isAcobertamento ? '#8b5cf6' : '#10b981',
+              }}
               leftIcon={<Send size={15} />}
             >
-              {isTransmitting ? 'Transmitindo à SEFAZ...' : '🚀 Transmitir & Autorizar NF-e (SEFAZ)'}
+              {isTransmitting
+                ? 'Transmitindo à SEFAZ...'
+                : (!fiscalCheck.permitido && !isAcobertamento)
+                ? '🔒 Emissão Bloqueada (Já Faturado)'
+                : isAcobertamento
+                ? '🏷️ Transmitir NF-e de Acobertamento'
+                : '🚀 Transmitir & Autorizar NF-e (SEFAZ)'}
             </Button>
           )}
         </div>

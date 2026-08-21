@@ -38,7 +38,10 @@ export interface NfeConfiguracaoCompleta {
   hostAcbr: string; // Padrão: '127.0.0.1'
   portaAcbr: number; // Padrão: 3434
 
-  // --- 1. DADOS PRINCIPAL ---
+  // --- 1. DADOS PRINCIPAL & NUMERAÇÃO ---
+  serieNfe: number; // Série padrão da NF-e (ex: 1)
+  proximoNumeroNfe: number; // Próximo número a ser emitido (ex: 1025)
+  ultimoNumeroAutorizadoNfe?: number;
   cnpjEmitente: string;
   nomeEmitente: string;
   inscricaoEstadualEmitente: string;
@@ -91,6 +94,9 @@ export const CONFIG_NFE_PADRAO: NfeConfiguracaoCompleta = {
   nuvemFiscalAmbiente: 'SANDBOX',
   hostAcbr: '127.0.0.1',
   portaAcbr: 3434,
+  serieNfe: 1,
+  proximoNumeroNfe: 1025,
+  ultimoNumeroAutorizadoNfe: 1024,
   cnpjEmitente: '68.148.349/0001-09',
   nomeEmitente: 'LIVRARIA DAMASCO LTDA',
   inscricaoEstadualEmitente: '283261864',
@@ -138,6 +144,8 @@ export function getNfeConfig(): NfeConfiguracaoCompleta {
     if (!merged.pastaArmazenamentoNfe || merged.pastaArmazenamentoNfe === 'C:\\ERPFULL\\NFE\\' || merged.pastaArmazenamentoNfe === 'C:\\ERPFULL\\NFE') {
       merged.pastaArmazenamentoNfe = 'C:\\ERPFULL\\NFE\\XmlDestinatario\\';
     }
+    if (!merged.serieNfe || merged.serieNfe < 1) merged.serieNfe = 1;
+    if (!merged.proximoNumeroNfe || merged.proximoNumeroNfe < 1) merged.proximoNumeroNfe = 1025;
     return merged;
   } catch {
     return CONFIG_NFE_PADRAO;
@@ -147,4 +155,30 @@ export function getNfeConfig(): NfeConfiguracaoCompleta {
 export function salvarNfeConfig(config: NfeConfiguracaoCompleta): void {
   localStorage.setItem(STORAGE_KEY_NFE_CONFIG, JSON.stringify(config));
   window.dispatchEvent(new Event('coliseu_nfe_config_updated'));
+}
+
+export function obterProximoNumeroNFe(): { serie: number; proximoNumero: number } {
+  const cfg = getNfeConfig();
+  return {
+    serie: Number(cfg.serieNfe) || 1,
+    proximoNumero: Number(cfg.proximoNumeroNfe) || 1025,
+  };
+}
+
+export function salvarProximoNumeroNFe(proximoNumero: number, serie?: number): void {
+  const cfg = getNfeConfig();
+  cfg.proximoNumeroNfe = Math.max(1, Number(proximoNumero) || 1);
+  if (serie !== undefined) {
+    cfg.serieNfe = Math.max(1, Number(serie) || 1);
+  }
+  salvarNfeConfig(cfg);
+}
+
+export function incrementarNumeroNFe(numeroAutorizado?: number): number {
+  const cfg = getNfeConfig();
+  const numAtual = numeroAutorizado || cfg.proximoNumeroNfe;
+  cfg.ultimoNumeroAutorizadoNfe = numAtual;
+  cfg.proximoNumeroNfe = numAtual + 1;
+  salvarNfeConfig(cfg);
+  return cfg.proximoNumeroNfe;
 }

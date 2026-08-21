@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { PageHeader } from '../components/ui/PageHeader';
 import { Input } from '../components/ui/Input';
 import { Button } from '../components/ui/Button';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { AIInsight } from '../components/ui/AIComponents';
-import { Save, Building2, ShieldCheck, Printer, Key, Mail, CheckCircle2, Sliders, DollarSign } from 'lucide-react';
+import { Save, Building2, ShieldCheck, Printer, Key, Mail, CheckCircle2, Sliders, DollarSign, FileText, Receipt, Truck } from 'lucide-react';
+import { getNfeConfig, salvarNfeConfig } from '../lib/nfeConfig';
+import { getNfceConfig, salvarNfceConfig } from '../lib/nfceConfig';
 
 export const ConfiguracoesPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'empresa' | 'fiscal' | 'impressora' | 'preferencias' | 'financeiro'>('empresa');
@@ -18,11 +20,22 @@ export const ConfiguracoesPage: React.FC = () => {
   const [cidade, setCidade] = useState('Dourados');
   const [uf, setUf] = useState('MS');
 
-  // Fiscal
+  // Fiscal (Sincronizado com nfeConfig e nfceConfig)
   const [serieNFe, setSerieNFe] = useState('1');
   const [proximoNFe, setProximoNFe] = useState('1025');
   const [serieNFCe, setSerieNFCe] = useState('1');
-  const [proximoNFCe, setProximoNFCe] = useState('5893');
+  const [proximoNFCe, setProximoNFCe] = useState('120');
+  const [serieMDFe, setSerieMDFe] = useState('1');
+  const [proximoMDFe, setProximoMDFe] = useState('1');
+
+  useEffect(() => {
+    const nfeCfg = getNfeConfig();
+    const nfceCfg = getNfceConfig();
+    setSerieNFe(String(nfeCfg.serieNfe || 1));
+    setProximoNFe(String(nfeCfg.proximoNumeroNfe || 1025));
+    setSerieNFCe(String(nfceCfg.serieNfce || 1));
+    setProximoNFCe(String(nfceCfg.proximoNumeroNfce || 120));
+  }, []);
 
   // Impressora
   const [impressoraPadrao, setImpressoraPadrao] = useState('EPSON TM-T20X (USB/ESC-POS)');
@@ -49,6 +62,19 @@ export const ConfiguracoesPage: React.FC = () => {
 
   const handleSalvar = () => {
     try {
+      // 1. Atualizar e persistir nfeConfig
+      const nfeCfg = getNfeConfig();
+      nfeCfg.serieNfe = Math.max(1, Number(serieNFe) || 1);
+      nfeCfg.proximoNumeroNfe = Math.max(1, Number(proximoNFe) || 1);
+      salvarNfeConfig(nfeCfg);
+
+      // 2. Atualizar e persistir nfceConfig
+      const nfceCfg = getNfceConfig();
+      nfceCfg.serieNfce = Math.max(1, Number(serieNFCe) || 1);
+      nfceCfg.proximoNumeroNfce = Math.max(1, Number(proximoNFCe) || 1);
+      salvarNfceConfig(nfceCfg);
+
+      // 3. Salvar configurações gerais unificadas
       const configData = {
         razaoSocial,
         nomeFantasia,
@@ -60,6 +86,8 @@ export const ConfiguracoesPage: React.FC = () => {
         proximoNFe,
         serieNFCe,
         proximoNFCe,
+        serieMDFe,
+        proximoMDFe,
         impressoraPadrao,
         colunasTermica,
         cortarPapel,
@@ -74,7 +102,7 @@ export const ConfiguracoesPage: React.FC = () => {
         gerarBoletoHibrido,
       };
       localStorage.setItem('coliseu_erp_config', JSON.stringify(configData));
-      showToast('✅ Todas as configurações foram salvas e aplicadas com sucesso!');
+      showToast('✅ Todas as configurações e numerações fiscais foram salvas com sucesso!');
     } catch {
       showToast('✅ Configurações salvas na sessão atual!');
     }
@@ -93,7 +121,7 @@ export const ConfiguracoesPage: React.FC = () => {
 
       <PageHeader
         title="Configurações Unificadas do Sistema ERP"
-        description="Gestão de dados cadastrais da empresa/filial, séries fiscais NF-e/NFC-e/NFS-e, impressoras térmicas e preferências."
+        description="Gestão de dados cadastrais da empresa/filial, séries fiscais NF-e/NFC-e/MDF-e, impressoras térmicas e preferências."
         breadcrumbItems={[
           { label: 'Administração', active: false },
           { label: 'Configurações', active: true },
@@ -118,23 +146,28 @@ export const ConfiguracoesPage: React.FC = () => {
             >
               {tab === 'empresa' ? (
                 <>
-                  <Building2 size={13} /> Dados da Empresa
+                  <Building2 size={14} aria-hidden="true" />
+                  <span>Dados da Empresa</span>
                 </>
               ) : tab === 'fiscal' ? (
                 <>
-                  <ShieldCheck size={13} /> Séries Fiscais
+                  <ShieldCheck size={14} aria-hidden="true" />
+                  <span>Séries & Numeração Fiscal</span>
                 </>
               ) : tab === 'financeiro' ? (
                 <>
-                  <DollarSign size={13} /> Financeiro
+                  <DollarSign size={14} aria-hidden="true" />
+                  <span>Financeiro & Cobrança</span>
                 </>
               ) : tab === 'impressora' ? (
                 <>
-                  <Printer size={13} /> Impressora PDV
+                  <Printer size={14} aria-hidden="true" />
+                  <span>Impressão & PDV</span>
                 </>
               ) : (
                 <>
-                  <Sliders size={13} /> Preferências
+                  <Sliders size={14} aria-hidden="true" />
+                  <span>Preferências do Sistema</span>
                 </>
               )}
             </button>
@@ -180,27 +213,133 @@ export const ConfiguracoesPage: React.FC = () => {
       )}
 
       {activeTab === 'fiscal' && (
-        <div className="coliseu-card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          <h3 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '8px', margin: 0 }}>
-            Configuração de Séries & Numeração Sequencial de Documentos Fiscais
-          </h3>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '12px' }}>
+        <div className="coliseu-card" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '8px' }}>
             <div>
-              <label className="coliseu-label">Série NF-e (Modelo 55)</label>
-              <input type="text" value={serieNFe} onChange={(e) => setSerieNFe(e.target.value)} className="coliseu-input text-mono" />
+              <h3 style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
+                Configuração de Séries & Contadores Sequenciais de Documentos Fiscais
+              </h3>
+              <p style={{ fontSize: '11px', color: 'var(--text-muted)', margin: '4px 0 0 0' }}>
+                Defina a série e o próximo número a ser emitido na SEFAZ. O sistema incrementa automaticamente (+1) a cada autorização.
+              </p>
             </div>
-            <div>
-              <label className="coliseu-label">Próximo Nº NF-e</label>
-              <input type="text" value={proximoNFe} onChange={(e) => setProximoNFe(e.target.value)} className="coliseu-input text-mono" />
+            <StatusBadge status="Ativo" label="Auto-Incremento Ativo" />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px' }}>
+            {/* Card NF-e */}
+            <div style={{
+              border: '1px solid var(--border-subtle)',
+              borderRadius: '8px',
+              padding: '16px',
+              backgroundColor: 'var(--surface-2)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '12px'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <FileText size={18} style={{ color: '#3b82f6' }} />
+                  <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>NF-e (Modelo 55)</span>
+                </div>
+                <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', backgroundColor: '#3b82f620', color: '#3b82f6', fontWeight: 600 }}>
+                  Mercantil B2B/B2C
+                </span>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr', gap: '10px' }}>
+                <div>
+                  <label className="coliseu-label" style={{ fontSize: '11px' }}>Série</label>
+                  <input type="number" min="1" max="999" value={serieNFe} onChange={(e) => setSerieNFe(e.target.value)} className="coliseu-input text-mono" />
+                </div>
+                <div>
+                  <label className="coliseu-label" style={{ fontSize: '11px' }}>Próximo Número</label>
+                  <input type="number" min="1" value={proximoNFe} onChange={(e) => setProximoNFe(e.target.value)} className="coliseu-input text-mono" style={{ fontWeight: 700, color: '#3b82f6' }} />
+                </div>
+              </div>
+              <div style={{ fontSize: '11px', color: 'var(--text-muted)', backgroundColor: 'var(--surface-1)', padding: '6px 10px', borderRadius: '4px' }}>
+                Próxima emissão: <strong style={{ color: 'var(--text-primary)' }}>Série {serieNFe} - Nº {String(proximoNFe).padStart(6, '0')}</strong>
+              </div>
             </div>
-            <div>
-              <label className="coliseu-label">Série NFC-e (Modelo 65)</label>
-              <input type="text" value={serieNFCe} onChange={(e) => setSerieNFCe(e.target.value)} className="coliseu-input text-mono" />
+
+            {/* Card NFC-e */}
+            <div style={{
+              border: '1px solid var(--border-subtle)',
+              borderRadius: '8px',
+              padding: '16px',
+              backgroundColor: 'var(--surface-2)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '12px'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Receipt size={18} style={{ color: '#10b981' }} />
+                  <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>NFC-e (Modelo 65)</span>
+                </div>
+                <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', backgroundColor: '#10b98120', color: '#10b981', fontWeight: 600 }}>
+                  Cupom PDV
+                </span>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr', gap: '10px' }}>
+                <div>
+                  <label className="coliseu-label" style={{ fontSize: '11px' }}>Série</label>
+                  <input type="number" min="1" max="999" value={serieNFCe} onChange={(e) => setSerieNFCe(e.target.value)} className="coliseu-input text-mono" />
+                </div>
+                <div>
+                  <label className="coliseu-label" style={{ fontSize: '11px' }}>Próximo Número</label>
+                  <input type="number" min="1" value={proximoNFCe} onChange={(e) => setProximoNFCe(e.target.value)} className="coliseu-input text-mono" style={{ fontWeight: 700, color: '#10b981' }} />
+                </div>
+              </div>
+              <div style={{ fontSize: '11px', color: 'var(--text-muted)', backgroundColor: 'var(--surface-1)', padding: '6px 10px', borderRadius: '4px' }}>
+                Próxima emissão: <strong style={{ color: 'var(--text-primary)' }}>Série {serieNFCe} - Nº {String(proximoNFCe).padStart(6, '0')}</strong>
+              </div>
             </div>
-            <div>
-              <label className="coliseu-label">Próximo Nº NFC-e</label>
-              <input type="text" value={proximoNFCe} onChange={(e) => setProximoNFCe(e.target.value)} className="coliseu-input text-mono" />
+
+            {/* Card MDF-e */}
+            <div style={{
+              border: '1px solid var(--border-subtle)',
+              borderRadius: '8px',
+              padding: '16px',
+              backgroundColor: 'var(--surface-2)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '12px'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Truck size={18} style={{ color: '#f59e0b' }} />
+                  <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>MDF-e (Modelo 58)</span>
+                </div>
+                <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', backgroundColor: '#f59e0b20', color: '#f59e0b', fontWeight: 600 }}>
+                  Manifesto Carga
+                </span>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr', gap: '10px' }}>
+                <div>
+                  <label className="coliseu-label" style={{ fontSize: '11px' }}>Série</label>
+                  <input type="number" min="1" max="999" value={serieMDFe} onChange={(e) => setSerieMDFe(e.target.value)} className="coliseu-input text-mono" />
+                </div>
+                <div>
+                  <label className="coliseu-label" style={{ fontSize: '11px' }}>Próximo Número</label>
+                  <input type="number" min="1" value={proximoMDFe} onChange={(e) => setProximoMDFe(e.target.value)} className="coliseu-input text-mono" style={{ fontWeight: 700, color: '#f59e0b' }} />
+                </div>
+              </div>
+              <div style={{ fontSize: '11px', color: 'var(--text-muted)', backgroundColor: 'var(--surface-1)', padding: '6px 10px', borderRadius: '4px' }}>
+                Próxima emissão: <strong style={{ color: 'var(--text-primary)' }}>Série {serieMDFe} - Nº {String(proximoMDFe).padStart(6, '0')}</strong>
+              </div>
             </div>
+          </div>
+
+          <div style={{
+            padding: '12px 14px',
+            backgroundColor: 'rgba(59, 130, 246, 0.06)',
+            border: '1px solid rgba(59, 130, 246, 0.2)',
+            borderRadius: '6px',
+            fontSize: '12px',
+            color: 'var(--text-secondary)',
+            lineHeight: 1.5
+          }}>
+            ℹ️ <strong>Regra de Unicidade Fiscal:</strong> Cada pedido de venda aceita apenas 1 nota fiscal autorizada. Em caso de cancelamento da nota na SEFAZ, o pedido é liberado para novo faturamento. Se o pedido já possui NFC-e emitida, o sistema permite gerar a NF-e de Acobertamento de Cupom Fiscal (CFOP 5.929 / 6.929).
           </div>
         </div>
       )}

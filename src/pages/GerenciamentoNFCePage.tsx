@@ -21,6 +21,7 @@ import {
   getNfceConfig,
   salvarNfceConfig,
 } from '../lib/nfceConfig';
+import { getPedidosVenda, cancelarNotaFiscalPedido } from '../lib/pedidosVenda';
 import { invoke } from '@tauri-apps/api/core';
 import { escolherPasta, escolherArquivoImagem, escolherArquivoCertificado } from '../lib/fileDialogHelper';
 
@@ -281,6 +282,20 @@ export const GerenciamentoNFCePage: React.FC = () => {
       return;
     }
 
+    const desvincularPedidosAposCancelamentoNFCe = (chave: string, motivo: string) => {
+      try {
+        const lista = getPedidosVenda();
+        lista.forEach((p) => {
+          if (p.chaveNFCeEmitida === chave) {
+            cancelarNotaFiscalPedido(p.id, 'NFCE', motivo);
+            logRetorno(`🔓 Pedido Nº ${p.numeroPedido} liberado e destravado após cancelamento do Cupom NFC-e.`);
+          }
+        });
+      } catch (err) {
+        console.warn('Erro ao destravar pedidos vinculados ao cancelamento NFC-e:', err);
+      }
+    };
+
     if (config.modoOperacao === 'TECNOSPEED') {
       try {
         const res = await invoke<string>('tecnospeed_cancelar_nfe_cmd', {
@@ -294,7 +309,8 @@ export const GerenciamentoNFCePage: React.FC = () => {
           justificativa: justificativaCanc,
         });
         logRetorno(`✅ Cancelamento NFC-e homologado via TecnoSpeed: ${res}`);
-        showToast('NFC-e cancelada com sucesso!');
+        desvincularPedidosAposCancelamentoNFCe(chaveCanc, justificativaCanc);
+        showToast('NFC-e cancelada e pedido liberado com sucesso!');
         setIsModalCancelarOpen(false);
         setChaveCanc('');
         setJustificativaCanc('');
@@ -315,7 +331,8 @@ export const GerenciamentoNFCePage: React.FC = () => {
           sandbox: config.nuvemFiscalAmbiente === 'SANDBOX',
         });
         logRetorno(`✅ Cancelamento NFC-e homologado via Nuvem Fiscal: ${res}`);
-        showToast('NFC-e cancelada com sucesso!');
+        desvincularPedidosAposCancelamentoNFCe(chaveCanc, justificativaCanc);
+        showToast('NFC-e cancelada e pedido liberado com sucesso!');
         setIsModalCancelarOpen(false);
         setChaveCanc('');
         setJustificativaCanc('');
@@ -336,7 +353,8 @@ export const GerenciamentoNFCePage: React.FC = () => {
           port: Number(config.portaAcbr) || 3434,
         });
         logRetorno(`✅ Cancelamento NFC-e homologado via ACBr: ${res}`);
-        showToast('NFC-e cancelada com sucesso!');
+        desvincularPedidosAposCancelamentoNFCe(chaveCanc, justificativaCanc);
+        showToast('NFC-e cancelada e pedido liberado com sucesso!');
         setIsModalCancelarOpen(false);
         setChaveCanc('');
         setJustificativaCanc('');
@@ -349,7 +367,8 @@ export const GerenciamentoNFCePage: React.FC = () => {
 
     const protocolo = `15026000${Math.floor(1000000 + Math.random() * 9000000)}`;
     logRetorno(`✅ Cancelamento de NFC-e Homologado na SEFAZ: Chave=${chaveCanc}, Protocolo=${protocolo}, Evento=110111 (cStat 135).`);
-    showToast('NFC-e cancelada com sucesso na SEFAZ!');
+    desvincularPedidosAposCancelamentoNFCe(chaveCanc, justificativaCanc);
+    showToast('NFC-e cancelada e pedido liberado com sucesso!');
     setIsModalCancelarOpen(false);
     setChaveCanc('');
     setJustificativaCanc('');
@@ -876,6 +895,46 @@ export const GerenciamentoNFCePage: React.FC = () => {
                     </span>
                   </div>
                 )}
+              </div>
+
+              {/* Linha 0: Série e Numeração Sequencial NFC-e */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 1.5fr 2.5fr',
+                gap: '10px',
+                backgroundColor: 'rgba(16, 185, 129, 0.05)',
+                padding: '10px 12px',
+                borderRadius: '6px',
+                border: '1px solid rgba(16, 185, 129, 0.3)',
+                alignItems: 'center'
+              }}>
+                <div>
+                  <label className="coliseu-label" style={{ color: '#10b981', fontWeight: 700 }}>Série NFC-e:</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="999"
+                    value={config.serieNfce || 1}
+                    onChange={(e) => setConfig({ ...config, serieNfce: Math.max(1, Number(e.target.value) || 1) })}
+                    className="coliseu-input text-mono"
+                    style={{ height: '32px', fontWeight: 700 }}
+                  />
+                </div>
+                <div>
+                  <label className="coliseu-label" style={{ color: '#10b981', fontWeight: 700 }}>Próximo Nº Cupom:</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={config.proximoNumeroNfce || 120}
+                    onChange={(e) => setConfig({ ...config, proximoNumeroNfce: Math.max(1, Number(e.target.value) || 1) })}
+                    className="coliseu-input text-mono"
+                    style={{ height: '32px', fontWeight: 800, color: '#10b981', fontSize: '14px' }}
+                  />
+                </div>
+                <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', paddingLeft: '8px' }}>
+                  Cupom NFC-e atual: <strong>Série {config.serieNfce || 1} - Nº {String(config.proximoNumeroNfce || 120).padStart(6, '0')}</strong>.
+                  <span style={{ display: 'block', fontSize: '10.5px', color: 'var(--text-muted)' }}>Auto-incrementa (+1) a cada venda autorizada no PDV.</span>
+                </div>
               </div>
 
               {/* Linha 1: CNPJ e Nome */}

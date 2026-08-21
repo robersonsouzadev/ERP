@@ -30,7 +30,10 @@ export interface NfceConfiguracaoCompleta {
   hostAcbr: string;
   portaAcbr: number;
 
-  // --- 1. DADOS PRINCIPAL & TOKENS SEFAZ (CSC) ---
+  // --- 1. DADOS PRINCIPAL & TOKENS SEFAZ (CSC) & NUMERAÇÃO ---
+  serieNfce: number; // Série padrão da NFC-e (ex: 1)
+  proximoNumeroNfce: number; // Próximo número da NFC-e a ser emitido (ex: 120)
+  ultimoNumeroAutorizadoNfce?: number;
   cnpjEmitente: string;
   nomeEmitente: string;
   certificadoDigital: string;
@@ -85,6 +88,9 @@ export const CONFIG_NFCE_PADRAO: NfceConfiguracaoCompleta = {
   nuvemFiscalAmbiente: 'SANDBOX',
   hostAcbr: '127.0.0.1',
   portaAcbr: 3434,
+  serieNfce: 1,
+  proximoNumeroNfce: 120,
+  ultimoNumeroAutorizadoNfce: 119,
   cnpjEmitente: '05.766.577/0001-22',
   nomeEmitente: 'PIVETA DIST. DE TINTAS AUTOMOTIVA LTDA',
   certificadoDigital: 'PIVETA DIST. DE TINTAS AUTOMOTIVA LTDA (A1 - Validade: 12/2026)',
@@ -134,6 +140,8 @@ export function getNfceConfig(): NfceConfiguracaoCompleta {
     if (!merged.pastaArmazenamentoNfce || merged.pastaArmazenamentoNfce === 'C:\\ERPFULL\\NFCE\\' || merged.pastaArmazenamentoNfce === 'C:\\ERPFULL\\NFE\\') {
       merged.pastaArmazenamentoNfce = 'C:\\ERPFULL\\NFE\\XmlDestinatario\\';
     }
+    if (!merged.serieNfce || merged.serieNfce < 1) merged.serieNfce = 1;
+    if (!merged.proximoNumeroNfce || merged.proximoNumeroNfce < 1) merged.proximoNumeroNfce = 120;
     return merged;
   } catch {
     return CONFIG_NFCE_PADRAO;
@@ -143,4 +151,30 @@ export function getNfceConfig(): NfceConfiguracaoCompleta {
 export function salvarNfceConfig(config: NfceConfiguracaoCompleta): void {
   localStorage.setItem(STORAGE_KEY_NFCE_CONFIG, JSON.stringify(config));
   window.dispatchEvent(new Event('coliseu_nfce_config_updated'));
+}
+
+export function obterProximoNumeroNFCe(): { serie: number; proximoNumero: number } {
+  const cfg = getNfceConfig();
+  return {
+    serie: Number(cfg.serieNfce) || 1,
+    proximoNumero: Number(cfg.proximoNumeroNfce) || 120,
+  };
+}
+
+export function salvarProximoNumeroNFCe(proximoNumero: number, serie?: number): void {
+  const cfg = getNfceConfig();
+  cfg.proximoNumeroNfce = Math.max(1, Number(proximoNumero) || 1);
+  if (serie !== undefined) {
+    cfg.serieNfce = Math.max(1, Number(serie) || 1);
+  }
+  salvarNfceConfig(cfg);
+}
+
+export function incrementarNumeroNFCe(numeroAutorizado?: number): number {
+  const cfg = getNfceConfig();
+  const numAtual = numeroAutorizado || cfg.proximoNumeroNfce;
+  cfg.ultimoNumeroAutorizadoNfce = numAtual;
+  cfg.proximoNumeroNfce = numAtual + 1;
+  salvarNfceConfig(cfg);
+  return cfg.proximoNumeroNfce;
 }

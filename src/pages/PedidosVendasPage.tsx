@@ -26,9 +26,12 @@ import {
   getPedidosVenda,
   faturarPedidoDireto,
   excluirPedidoVenda,
+  podeFaturarPedidoNFe,
+  podeEmitirAcobertamento,
 } from '../lib/pedidosVenda';
 import { ModalEmissaoPedidoVenda } from '../components/vendas/ModalEmissaoPedidoVenda';
 import { ModalImpressaoPedidoA4 } from '../components/vendas/ModalImpressaoPedidoA4';
+import { ModalFaturamentoNFe } from '../components/vendas/ModalFaturamentoNFe';
 
 export const PedidosVendasPage: React.FC = () => {
   const [pedidos, setPedidos] = useState<PedidoVendaItem[]>(getPedidosVenda);
@@ -40,11 +43,13 @@ export const PedidosVendasPage: React.FC = () => {
   // Modais
   const [isModalEmissaoOpen, setIsModalEmissaoOpen] = useState(false);
   const [isModalImpressaoOpen, setIsModalImpressaoOpen] = useState(false);
+  const [isModalFaturamentoOpen, setIsModalFaturamentoOpen] = useState(false);
   const [pedidoSelecionado, setPedidoSelecionado] = useState<PedidoVendaItem | null>(null);
+  const [pedidoFaturamento, setPedidoFaturamento] = useState<PedidoVendaItem | null>(null);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3500);
+    setTimeout(() => setToastMessage(null), 4000);
   };
 
   useEffect(() => {
@@ -71,10 +76,13 @@ export const PedidosVendasPage: React.FC = () => {
   };
 
   const handleFaturarNFe = (p: PedidoVendaItem) => {
-    const res = faturarPedidoDireto(p.id);
-    if (res) {
-      showToast(`🧾 NF-e Mod. 55 faturada com sucesso para o Pedido Nº ${p.numeroPedido}!`);
+    const fiscalCheck = podeFaturarPedidoNFe(p);
+    if (!fiscalCheck.permitido && fiscalCheck.acaoRecomendada !== 'ACOBERTAMENTO') {
+      showToast(`⚠️ ${fiscalCheck.motivo}`);
+      return;
     }
+    setPedidoFaturamento(p);
+    setIsModalFaturamentoOpen(true);
   };
 
   const handleExcluir = (id: string, numero: string) => {
@@ -370,18 +378,50 @@ export const PedidosVendasPage: React.FC = () => {
                           <Printer size={12} /> A4
                         </button>
 
-                        {/* Emitir NF-e se Aprovado */}
-                        {p.status !== 'FATURADO' && (
-                          <button
-                            type="button"
-                            onClick={() => handleFaturarNFe(p)}
-                            className="coliseu-btn coliseu-btn-secondary"
-                            style={{ padding: '0 6px', height: '26px', fontSize: '11px', color: '#3b82f6' }}
-                            title="Emitir NF-e Mod. 55"
-                          >
-                            <FileCheck size={12} /> NF-e
-                          </button>
-                        )}
+                        {/* Botão Dinâmico de NF-e / Acobertamento */}
+                        {(() => {
+                          const check = podeFaturarPedidoNFe(p);
+                          if (check.acaoRecomendada === 'ACOBERTAMENTO') {
+                            return (
+                              <button
+                                type="button"
+                                onClick={() => handleFaturarNFe(p)}
+                                className="coliseu-btn coliseu-btn-secondary"
+                                style={{ padding: '0 6px', height: '26px', fontSize: '11px', color: '#8b5cf6', borderColor: 'rgba(139, 92, 246, 0.4)' }}
+                                title="Emitir NF-e de Acobertamento (CFOP 5.929 / 6.929)"
+                              >
+                                <FileCheck size={12} /> Acobertamento
+                              </button>
+                            );
+                          }
+                          if (check.permitido) {
+                            return (
+                              <button
+                                type="button"
+                                onClick={() => handleFaturarNFe(p)}
+                                className="coliseu-btn coliseu-btn-secondary"
+                                style={{ padding: '0 6px', height: '26px', fontSize: '11px', color: '#3b82f6' }}
+                                title="Emitir NF-e Mod. 55"
+                              >
+                                <FileCheck size={12} /> NF-e
+                              </button>
+                            );
+                          }
+                          if (p.chaveNFeEmitida) {
+                            return (
+                              <button
+                                type="button"
+                                onClick={() => handleFaturarNFe(p)}
+                                className="coliseu-btn coliseu-btn-secondary"
+                                style={{ padding: '0 6px', height: '26px', fontSize: '11px', color: '#10b981' }}
+                                title={`NF-e Nº ${p.numeroNFe || ''} Autorizada`}
+                              >
+                                <FileCheck size={12} /> Ver NF-e
+                              </button>
+                            );
+                          }
+                          return null;
+                        })()}
 
                         {/* Editar */}
                         <button
@@ -519,6 +559,22 @@ export const PedidosVendasPage: React.FC = () => {
           isOpen={isModalImpressaoOpen}
           onClose={() => setIsModalImpressaoOpen(false)}
           pedido={pedidoSelecionado}
+        />
+      )}
+
+      {/* Modal Faturamento NF-e & Acobertamento */}
+      {isModalFaturamentoOpen && pedidoFaturamento && (
+        <ModalFaturamentoNFe
+          isOpen={isModalFaturamentoOpen}
+          onClose={() => {
+            setIsModalFaturamentoOpen(false);
+            setPedidoFaturamento(null);
+          }}
+          pedido={pedidoFaturamento}
+          onFaturamentoConcluido={(atualizado) => {
+            showToast(`✅ Faturamento do Pedido Nº ${atualizado.numeroPedido} concluído com sucesso!`);
+            setPedidos(getPedidosVenda());
+          }}
         />
       )}
     </div>
