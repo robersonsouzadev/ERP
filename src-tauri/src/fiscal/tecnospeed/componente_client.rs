@@ -69,23 +69,52 @@ impl Default for TecnoSpeedComponenteConfig {
         Self {
             cnpj_software_house: "03661869000175".to_string(),
             token_software_house: "6f46553fc8fcf2e4263df17c11acafc0".to_string(),
-            cnpj_emitente: "05766577000122".to_string(),
+            cnpj_emitente: "68148349000109".to_string(),
             uf: "MS".to_string(),
             ambiente: 2,
             versao_manual: "6.0".to_string(),
             nome_certificado: "".to_string(),
             caminho_certificado_pfx: "".to_string(),
             senha_certificado: "".to_string(),
-            diretorio_esquemas: "C:\\Coliseu\\Programa\\NFe\\Esquemas\\vm60\\".to_string(),
-            diretorio_templates: "C:\\Coliseu\\Programa\\NFe\\templates\\vm60\\".to_string(),
+            diretorio_esquemas: "C:\\Program Files\\TecnoSpeed\\NFe\\arquivos\\Esquemas\\".to_string(),
+            diretorio_templates: "C:\\Program Files\\TecnoSpeed\\NFe\\arquivos\\Templates\\".to_string(),
             diretorio_log: "C:\\ERPFULL\\NFE\\Log\\".to_string(),
             diretorio_log_erro: "C:\\ERPFULL\\NFE\\LogErro\\".to_string(),
             diretorio_temporario: "C:\\ERPFULL\\NFE\\Temporario\\".to_string(),
             diretorio_xml_destinatario: "C:\\ERPFULL\\NFE\\XmlDestinatario\\".to_string(),
-            arquivo_servidores_hom: "C:\\Coliseu\\Programa\\nfeServidoresHom.ini".to_string(),
-            arquivo_servidores_prod: "C:\\Coliseu\\Programa\\nfeServidoresProd.ini".to_string(),
+            arquivo_servidores_hom: "C:\\ERPFULL\\NFE\\nfeServidoresHom.ini".to_string(),
+            arquivo_servidores_prod: "C:\\ERPFULL\\NFE\\nfeServidoresProd.ini".to_string(),
             http_libs: "wininet,sbb".to_string(),
             versao_esquema: "pl_010b".to_string(),
+        }
+    }
+}
+
+/// Garante que os arquivos de licença .dat da TecnoSpeed existam e sejam graváveis em diretórios do PowerShell
+fn ensure_license_files() {
+    let ps_dirs = [
+        "C:\\Windows\\SysWOW64\\WindowsPowerShell\\v1.0",
+        "C:\\Windows\\System32\\WindowsPowerShell\\v1.0",
+    ];
+    let license_files = [
+        "spdLicenseNFe.dat",
+        "spdLicenseNFCe.dat",
+        "spdLicenseNFSeV2.dat",
+        "spdLicenseMDFe.dat",
+        "spdLicenseCte.dat",
+    ];
+
+    for dir in &ps_dirs {
+        for file in &license_files {
+            let target = Path::new(dir).join(file);
+            if !target.exists() {
+                let coliseu_source = Path::new("C:\\Coliseu\\Programa").join(file);
+                if coliseu_source.exists() {
+                    let _ = fs::copy(&coliseu_source, &target);
+                } else {
+                    let _ = fs::write(&target, b"");
+                }
+            }
         }
     }
 }
@@ -114,6 +143,7 @@ fn get_powershell_path() -> String {
 
 /// Executa um script PowerShell passando o conteúdo temporário com CWD garantido em C:\ERPFULL\NFE
 fn run_ps_script(script_body: &str) -> Result<String, String> {
+    ensure_license_files();
     let ps_exe = get_powershell_path();
     let base_dir = get_base_dir();
     let temp_dir = base_dir.join("Temporario");
@@ -400,9 +430,22 @@ try {{
     }}
     
     if (Test-Path "{esquemas}") {{ $n.DiretorioEsquemas = "{esquemas}" }}
+    elseif (Test-Path "C:\Program Files\TecnoSpeed\NFe\arquivos\Esquemas\") {{ $n.DiretorioEsquemas = "C:\Program Files\TecnoSpeed\NFe\arquivos\Esquemas\" }}
+    elseif (Test-Path "C:\Coliseu\Programa\NFe\Esquemas\vm60\") {{ $n.DiretorioEsquemas = "C:\Coliseu\Programa\NFe\Esquemas\vm60\" }}
+
     if (Test-Path "{templates}") {{ $n.DiretorioTemplates = "{templates}" }}
+    elseif (Test-Path "C:\Program Files\TecnoSpeed\NFe\arquivos\Templates\") {{ $n.DiretorioTemplates = "C:\Program Files\TecnoSpeed\NFe\arquivos\Templates\" }}
+    elseif (Test-Path "C:\Coliseu\Programa\NFe\templates\vm60\") {{ $n.DiretorioTemplates = "C:\Coliseu\Programa\NFe\templates\vm60\" }}
+
     if (Test-Path "{servidores_hom}") {{ $n.ArquivoServidoresHom = "{servidores_hom}" }}
+    elseif (Test-Path "C:\ERPFULL\NFE\nfeServidoresHom.ini") {{ $n.ArquivoServidoresHom = "C:\ERPFULL\NFE\nfeServidoresHom.ini" }}
+    elseif (Test-Path "C:\Coliseu\Programa\nfeServidoresHom.ini") {{ $n.ArquivoServidoresHom = "C:\Coliseu\Programa\nfeServidoresHom.ini" }}
+    elseif (Test-Path "C:\Program Files\TecnoSpeed\NFe\arquivos\nfeServidoresHom.ini") {{ $n.ArquivoServidoresHom = "C:\Program Files\TecnoSpeed\NFe\arquivos\nfeServidoresHom.ini" }}
+
     if (Test-Path "{servidores_prod}") {{ $n.ArquivoServidoresProd = "{servidores_prod}" }}
+    elseif (Test-Path "C:\ERPFULL\NFE\nfeServidoresProd.ini") {{ $n.ArquivoServidoresProd = "C:\ERPFULL\NFE\nfeServidoresProd.ini" }}
+    elseif (Test-Path "C:\Coliseu\Programa\nfeServidoresProd.ini") {{ $n.ArquivoServidoresProd = "C:\Coliseu\Programa\nfeServidoresProd.ini" }}
+    elseif (Test-Path "C:\Program Files\TecnoSpeed\NFe\arquivos\nfeServidoresProd.ini") {{ $n.ArquivoServidoresProd = "C:\Program Files\TecnoSpeed\NFe\arquivos\nfeServidoresProd.ini" }}
     
     $n.IgnoreInvalidCertificates = $true
     if ("{http_libs}" -ne "") {{ $n.HttpLibs = "{http_libs}" }}
@@ -545,9 +588,22 @@ try {{
     }}
     
     if (Test-Path "{esquemas}") {{ $n.DiretorioEsquemas = "{esquemas}" }}
+    elseif (Test-Path "C:\Program Files\TecnoSpeed\NFe\arquivos\Esquemas\") {{ $n.DiretorioEsquemas = "C:\Program Files\TecnoSpeed\NFe\arquivos\Esquemas\" }}
+    elseif (Test-Path "C:\Coliseu\Programa\NFe\Esquemas\vm60\") {{ $n.DiretorioEsquemas = "C:\Coliseu\Programa\NFe\Esquemas\vm60\" }}
+
     if (Test-Path "{templates}") {{ $n.DiretorioTemplates = "{templates}" }}
+    elseif (Test-Path "C:\Program Files\TecnoSpeed\NFe\arquivos\Templates\") {{ $n.DiretorioTemplates = "C:\Program Files\TecnoSpeed\NFe\arquivos\Templates\" }}
+    elseif (Test-Path "C:\Coliseu\Programa\NFe\templates\vm60\") {{ $n.DiretorioTemplates = "C:\Coliseu\Programa\NFe\templates\vm60\" }}
+
     if (Test-Path "{servidores_hom}") {{ $n.ArquivoServidoresHom = "{servidores_hom}" }}
+    elseif (Test-Path "C:\ERPFULL\NFE\nfeServidoresHom.ini") {{ $n.ArquivoServidoresHom = "C:\ERPFULL\NFE\nfeServidoresHom.ini" }}
+    elseif (Test-Path "C:\Coliseu\Programa\nfeServidoresHom.ini") {{ $n.ArquivoServidoresHom = "C:\Coliseu\Programa\nfeServidoresHom.ini" }}
+    elseif (Test-Path "C:\Program Files\TecnoSpeed\NFe\arquivos\nfeServidoresHom.ini") {{ $n.ArquivoServidoresHom = "C:\Program Files\TecnoSpeed\NFe\arquivos\nfeServidoresHom.ini" }}
+
     if (Test-Path "{servidores_prod}") {{ $n.ArquivoServidoresProd = "{servidores_prod}" }}
+    elseif (Test-Path "C:\ERPFULL\NFE\nfeServidoresProd.ini") {{ $n.ArquivoServidoresProd = "C:\ERPFULL\NFE\nfeServidoresProd.ini" }}
+    elseif (Test-Path "C:\Coliseu\Programa\nfeServidoresProd.ini") {{ $n.ArquivoServidoresProd = "C:\Coliseu\Programa\nfeServidoresProd.ini" }}
+    elseif (Test-Path "C:\Program Files\TecnoSpeed\NFe\arquivos\nfeServidoresProd.ini") {{ $n.ArquivoServidoresProd = "C:\Program Files\TecnoSpeed\NFe\arquivos\nfeServidoresProd.ini" }}
     
     $n.IgnoreInvalidCertificates = $true
     if ("{http_libs}" -ne "") {{ $n.HttpLibs = "{http_libs}" }}

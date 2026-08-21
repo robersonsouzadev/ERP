@@ -1,4 +1,4 @@
-﻿//! Módulo de Ponte Nativa para Componente TecnoSpeed COM (NFeX.spdNFeX)
+//! Módulo de Ponte Nativa para Componente TecnoSpeed COM (NFeX.spdNFeX)
 //!
 //! Executa chamadas síncronas/assíncronas no componente nativo instalado em C:\Windows\System32\NFeX.dll
 //! sem necessidade de servidor HTTP intermediário (Manager Desktop).
@@ -16,9 +16,38 @@ pub struct TecnoSpeedComConfig<'a> {
     pub ambiente: u32,
 }
 
+fn ensure_license_files() {
+    let ps_dirs = [
+        "C:\\Windows\\SysWOW64\\WindowsPowerShell\\v1.0",
+        "C:\\Windows\\System32\\WindowsPowerShell\\v1.0",
+    ];
+    let license_files = [
+        "spdLicenseNFe.dat",
+        "spdLicenseNFCe.dat",
+        "spdLicenseNFSeV2.dat",
+        "spdLicenseMDFe.dat",
+        "spdLicenseCte.dat",
+    ];
+
+    for dir in &ps_dirs {
+        for file in &license_files {
+            let target = std::path::Path::new(dir).join(file);
+            if !target.exists() {
+                let coliseu_source = std::path::Path::new("C:\\Coliseu\\Programa").join(file);
+                if coliseu_source.exists() {
+                    let _ = std::fs::copy(&coliseu_source, &target);
+                } else {
+                    let _ = std::fs::write(&target, b"");
+                }
+            }
+        }
+    }
+}
+
 fn execute_ps_script(script: &str) -> Result<String, String> {
     #[cfg(target_os = "windows")]
     {
+        ensure_license_files();
         let output = Command::new("powershell")
             .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script])
             .output()
@@ -62,15 +91,24 @@ try {{
     $nfe = New-Object -ComObject NFeX.spdNFeX
     $nfe.ConfigurarSoftwareHouse("{cnpj_sh}", "{token_sh}")
 
-    $ini = "{ini_path}"
-    if (Test-Path $ini) {{
-        $nfe.LoadConfig($ini)
+    if (Test-Path "{ini_path}") {{
+        $nfe.LoadConfig("{ini_path}")
     }}
 
-    $nfe.DiretorioEsquemas = "C:\Program Files\TecnoSpeed\NFe\arquivos\Esquemas\"
-    $nfe.DiretorioTemplates = "C:\Program Files\TecnoSpeed\NFe\arquivos\Templates\"
-    $nfe.ArquivoServidoresHom = "C:\Program Files\TecnoSpeed\NFe\arquivos\nfeServidoresHom.ini"
-    $nfe.ArquivoServidoresProd = "C:\Program Files\TecnoSpeed\NFe\arquivos\nfeServidoresProd.ini"
+    if (Test-Path "C:\ERPFULL\NFE\nfeServidoresHom.ini") {{ $nfe.ArquivoServidoresHom = "C:\ERPFULL\NFE\nfeServidoresHom.ini" }}
+    elseif (Test-Path "C:\Program Files\TecnoSpeed\NFe\arquivos\nfeServidoresHom.ini") {{ $nfe.ArquivoServidoresHom = "C:\Program Files\TecnoSpeed\NFe\arquivos\nfeServidoresHom.ini" }}
+    elseif (Test-Path "C:\Coliseu\Programa\nfeServidoresHom.ini") {{ $nfe.ArquivoServidoresHom = "C:\Coliseu\Programa\nfeServidoresHom.ini" }}
+
+    if (Test-Path "C:\ERPFULL\NFE\nfeServidoresProd.ini") {{ $nfe.ArquivoServidoresProd = "C:\ERPFULL\NFE\nfeServidoresProd.ini" }}
+    elseif (Test-Path "C:\Program Files\TecnoSpeed\NFe\arquivos\nfeServidoresProd.ini") {{ $nfe.ArquivoServidoresProd = "C:\Program Files\TecnoSpeed\NFe\arquivos\nfeServidoresProd.ini" }}
+    elseif (Test-Path "C:\Coliseu\Programa\nfeServidoresProd.ini") {{ $nfe.ArquivoServidoresProd = "C:\Coliseu\Programa\nfeServidoresProd.ini" }}
+
+    if (Test-Path "C:\Program Files\TecnoSpeed\NFe\arquivos\Esquemas\") {{ $nfe.DiretorioEsquemas = "C:\Program Files\TecnoSpeed\NFe\arquivos\Esquemas\" }}
+    elseif (Test-Path "C:\Coliseu\Programa\NFe\Esquemas\vm60\") {{ $nfe.DiretorioEsquemas = "C:\Coliseu\Programa\NFe\Esquemas\vm60\" }}
+
+    if (Test-Path "C:\Program Files\TecnoSpeed\NFe\arquivos\Templates\") {{ $nfe.DiretorioTemplates = "C:\Program Files\TecnoSpeed\NFe\arquivos\Templates\" }}
+    elseif (Test-Path "C:\Coliseu\Programa\NFe\templates\vm60\") {{ $nfe.DiretorioTemplates = "C:\Coliseu\Programa\NFe\templates\vm60\" }}
+
     $nfe.VersaoManual = "6.0"
     $nfe.CNPJ = "{cnpj_emit}"
     $nfe.UF = "{uf}"
